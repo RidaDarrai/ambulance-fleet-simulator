@@ -89,5 +89,36 @@ class CrewService {
         .map((d) => {'id': d.id, 'name': d.data()['name'] as String? ?? ''})
         .toList();
   }
+
+  CollectionReference<Map<String, dynamic>> _thread(String missionId) =>
+      _db.collection('missions').doc(missionId).collection('messages');
+
+  Stream<List<Map<String, dynamic>>> watchMessages(String missionId) {
+    return _thread(missionId)
+        .orderBy('at', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) {
+              final data = d.data();
+              final ts = data['at'];
+              return {
+                'id': d.id,
+                'text': (data['text'] as String?) ?? '',
+                'senderRole': (data['senderRole'] as String?) ?? '',
+                'at': ts is Timestamp ? ts.toDate() : null,
+              };
+            }).toList());
+  }
+
+  Future<void> sendMessage(String missionId, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return Future.value();
+    return _thread(missionId).add({
+      'text': trimmed,
+      'senderRole': 'crew',
+      'senderId': _auth.currentUser?.uid,
+      'at': FieldValue.serverTimestamp(),
+    });
+  }
 }
 
