@@ -15,6 +15,7 @@ import { db, rtdb } from '../lib/firebase';
 import { suggestNearest, ACTIVE_STATUSES } from '../lib/geoutils';
 import MissionTimeline from '../components/MissionTimeline';
 import MissionRoute from '../components/MissionRoute';
+import MapPanner from '../components/MapPanner';
 
 const STATUS_LABELS = {
   requested: 'Requested',
@@ -291,6 +292,7 @@ export default function Dispatcher() {
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="&copy; OpenStreetMap contributors"
           />
+          <MapPanner lat={selected?.location?.lat} lng={selected?.location?.lng} />
           {fleetPoints.map((a) => (
             <Marker
               key={a.id}
