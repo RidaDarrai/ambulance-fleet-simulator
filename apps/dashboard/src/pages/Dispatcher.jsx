@@ -14,6 +14,7 @@ import 'leaflet/dist/leaflet.css';
 import { db, rtdb } from '../lib/firebase';
 import { suggestNearest, ACTIVE_STATUSES } from '../lib/geoutils';
 import MissionTimeline from '../components/MissionTimeline';
+import MissionRoute from '../components/MissionRoute';
 
 const STATUS_LABELS = {
   requested: 'Requested',
@@ -143,6 +144,12 @@ export default function Dispatcher() {
       status: a.status,
     }))
     .filter((a) => a.point);
+
+  const selectedAmbPoint = selected?.ambulanceId
+    ? (positions[selected.ambulanceId] ??
+      fleetPoints.find((a) => a.id === selected.ambulanceId)?.point ??
+      ambulances.find((a) => a.id === selected.ambulanceId)?.base)
+    : null;
 
   return (
     <div className="dispatcher-layout">
@@ -306,6 +313,13 @@ export default function Dispatcher() {
             >
               <Popup>Emergency request #{selected.id.slice(0, 6)}</Popup>
             </Marker>
+          )}
+          {selected?.ambulanceId && selectedAmbPoint && (
+            <MissionRoute
+              key={selected.id}
+              mission={selected}
+              ambulancePoint={selectedAmbPoint}
+            />
           )}
         </MapContainer>
       </main>
