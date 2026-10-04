@@ -42,3 +42,48 @@ export function suggestNearest(target, ambulances, positions, busyAmbulanceIds) 
   }
   return best;
 }
+
+/**
+ * OSRM route with straight-line fallback (40 km/h).
+ * @returns {Promise<{points:[number,number][],durationSec:number,distanceKm:number}>}
+ *   points are [lat,lng] pairs ready for Leaflet polylines.
+ */
+export async function fetchRoute(from, to) {
+  try {
+    const url =
+      'https://router.project-osrm.org/route/v1/driving/' +
+      `${from.lng},${from.lat};${to.lng},${to.lat}` +
+      '?overview=full&geometries=geojson';
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (resp.ok) {
+      const json = await resp.json();
+      const r = json.routes?.[0];
+      if (r?.geometry?.coordinates?.length >= 2) {
+        return {
+          points: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+          durationSec: r.duration,
+          distanceKm: r.distance / 1000,
+        };
+      }
+    }
+  } catch {
+    // fall through
+  }
+  const km = haversineKm(from, to);
+  return {
+    points: [
+      [from.lat, from.lng],
+      [to.lat, to.lng],
+    ],
+    durationSec: (km / 40) * 3600,
+    distanceKm: km,
+  };
+}
+
+export function etaLabel(durationSec) {
+  const m = Math.round(durationSec / 60);
+  if (m < 1) return '<1 min';
+  if (m < 60) return `~${m} min`;
+  const h = Math.floor(m / 60);
+  return `~${h}h${String(m % 60).padStart(2, '0')}`;
+}
