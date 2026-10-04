@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/chat_service.dart';
 import '../services/mission_service.dart';
 import '../services/position_service.dart';
 import '../services/profile_service.dart';
@@ -188,7 +189,10 @@ class TrackingView extends StatefulWidget {
 
 class _TrackingViewState extends State<TrackingView> {
   final missions = MissionService();
+  final chat = ChatService();
   Duration? _eta;
+  int _total = 0;
+  int _lastSeen = 0;
 
   void _onEta(Duration? eta) {
     if (!mounted || _eta == eta) return;
@@ -298,14 +302,30 @@ class _TrackingViewState extends State<TrackingView> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  FilledButton.tonalIcon(
-                    onPressed: () => ChatSheet.open(
-                      context,
-                      missionId: widget.missionId,
-                      title: 'Message dispatch & crew',
-                    ),
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('Chat'),
+                  StreamBuilder<int>(
+                    stream: chat.watchCount(widget.missionId),
+                    builder: (context, snap) {
+                      _total = snap.data ?? 0;
+                      final unread =
+                          (_total - _lastSeen).clamp(0, 1 << 30);
+                      return FilledButton.tonalIcon(
+                        onPressed: () {
+                          ChatSheet.open(
+                            context,
+                            missionId: widget.missionId,
+                            title: 'Message dispatch & crew',
+                          ).whenComplete(() {
+                            if (mounted) setState(() => _lastSeen = _total);
+                          });
+                        },
+                        icon: Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text('$unread'),
+                          child: const Icon(Icons.chat_bubble_outline),
+                        ),
+                        label: const Text('Chat'),
+                      );
+                    },
                   ),
                   const SizedBox(width: 12),
                   TextButton.icon(
