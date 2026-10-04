@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +8,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/mission_service.dart';
+import '../services/position_service.dart';
 import '../services/profile_service.dart';
+import '../services/routing_service.dart';
 import 'fleet_map_screen.dart';
 
 class EmergencyScreen extends StatefulWidget {
@@ -171,17 +175,29 @@ const _statusLabels = {
   'resolved': ('Mission completed', Colors.grey),
 };
 
-class TrackingView extends StatelessWidget {
+class TrackingView extends StatefulWidget {
   const TrackingView({super.key, required this.missionId, required this.onAbort});
 
   final String missionId;
   final VoidCallback onAbort;
 
   @override
+  State<TrackingView> createState() => _TrackingViewState();
+}
+
+class _TrackingViewState extends State<TrackingView> {
+  final missions = MissionService();
+  Duration? _eta;
+
+  void _onEta(Duration? eta) {
+    if (!mounted || _eta == eta) return;
+    setState(() => _eta = eta);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final missions = MissionService();
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: missions.watch(missionId),
+      stream: missions.watch(widget.missionId),
       builder: (context, snapshot) {
         final data = snapshot.data?.data();
         if (data == null) {
@@ -218,6 +234,12 @@ class TrackingView extends StatelessWidget {
                               color: Colors.red, size: 40),
                         ),
                       ]),
+                      if (ambulanceId != null)
+                        _RouteLayer(
+                          patientPoint: patientPoint,
+                          ambulanceId: ambulanceId,
+                          onEta: _onEta,
+                        ),
                       if (ambulanceId != null)
                         _AmbulanceLiveLayer(ambulanceId: ambulanceId),
                       const RichAttributionWidget(
@@ -261,7 +283,7 @@ class TrackingView extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   TextButton.icon(
-                    onPressed: onAbort,
+                    onPressed: widget.onAbort,
                     icon: const Icon(Icons.close),
                     label: const Text('Cancel / back'),
                   ),
@@ -272,6 +294,89 @@ class TrackingView extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _RouteLayer extends StatefulWidget {
+  const _RouteLayer({
+    required this.patientPoint,
+    required this.ambulanceId,
+    required this.onEta,
+  });
+
+  final LatLng patientPoint;
+  final String ambulanceId;
+  final void Function(Duration?) onEta;
+
+  @override
+  State<_RouteLayer> createState() => _RouteLayerState();
+}
+
+class _RouteLayerState extends State<_RouteLayer> {
+  final _routing = RoutingService();
+  final _positions = PositionService();
+  StreamSubscription<LatLng?>? _sub;
+  List<LatLng> _line = const [];
+  LatLng? _lastFetch;
+  DateTime _lastFetchAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _fetching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = _positions.watchOne(widget.ambulanceId).listen(_onPosition);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RouteLayer old) {
+    super.didUpdateWidget(old);
+    if (old.ambulanceId != widget.ambulanceId) {
+      _sub?.cancel();
+      _sub = _positions.watchOne(widget.ambulanceId).listen(_onPosition);
+    } else if (old.patientPoint != widget.patientPoint) {
+      _lastFetchAt = DateTime.fromMillisecondsSinceEpoch(0);
+      final from = _lastFetch;
+      if (from != null) _fetch(from);
+    }
+  }
+
+  Future<void> _onPosition(LatLng? pos) async {
+    if (pos == null) return;
+    final now = DateTime.now();
+    final movedKm = _lastFetch == null
+        ? double.infinity
+        : const Distance().as(LengthUnit.Kilometer, _lastFetch!, pos);
+    if (movedKm < 0.05 || now.difference(_lastFetchAt).inSeconds < 3) return;
+    await _fetch(pos);
+  }
+
+  Future<void> _fetch(LatLng from) async {
+    if (_fetching) return;
+    _fetching = true;
+    _lastFetch = from;
+    _lastFetchAt = DateTime.now();
+    try {
+      final res = await _routing.route(from, widget.patientPoint);
+      if (!mounted) return;
+      setState(() => _line = res.points);
+      widget.onEta(res.duration);
+    } finally {
+      _fetching = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_line.length < 2) return PolylineLayer<Object>(polylines: const []);
+    return PolylineLayer(polylines: [
+      Polyline(points: _line, strokeWidth: 4.5, color: Colors.indigo),
+    ]);
   }
 }
 
