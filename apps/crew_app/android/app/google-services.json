@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "823967188310",
+    "project_id": "ambulance-dispatch-sim",
+    "storage_bucket": "ambulance-dispatch-sim.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:823967188310:android:b2f38e24d854358bdb82f7",
+        "android_client_info": {
+          "package_name": "com.ambulancesim.crew_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtfdSnwfETo4zndSTgAKyakg9gX2DnazI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:823967188310:android:e0e87504d288c9e6db82f7",
+        "android_client_info": {
+          "package_name": "com.ambulancesim.patient_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtfdSnwfETo4zndSTgAKyakg9gX2DnazI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

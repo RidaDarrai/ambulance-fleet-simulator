@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "positions": {
+      "$ambulanceId": {
+        ".read": "auth != null || true",
+        ".write": "auth != null"
+      }
+    },
+    "calls": {
+      "$callId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

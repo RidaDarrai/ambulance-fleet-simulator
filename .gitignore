@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Firebase
+.firebase/
+serviceAccountKey.json
+*-service-account*.json
+
+# IDE / OS
+.vscode/
+.idea/
+*.log
+.DS_Store
+
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Vite
+dist/
