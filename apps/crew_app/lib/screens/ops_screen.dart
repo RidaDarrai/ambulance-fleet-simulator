@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/crew_service.dart';
+import '../services/position_service.dart';
 
 const kCityCenter = LatLng(33.5731, -7.5898);
 
@@ -62,13 +63,10 @@ class _OpsScreenState extends State<OpsScreen> {
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.ambulancesim.crew_app',
                   ),
-                  MarkerLayer(markers: [
-                    Marker(
-                      point: _center,
-                      child: const Icon(Icons.local_hospital,
-                          color: Colors.blue, size: 36),
-                    ),
-                  ]),
+                  _LivePositionLayer(
+                    ambulanceId: widget.ambulanceId,
+                    fallback: _center,
+                  ),
                   const RichAttributionWidget(
                     attributions: [
                       TextSourceAttribution('© OpenStreetMap contributors'),
@@ -126,6 +124,33 @@ class _OpsScreenState extends State<OpsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LivePositionLayer extends StatelessWidget {
+  _LivePositionLayer({
+    required this.ambulanceId,
+    required this.fallback,
+  });
+
+  final String ambulanceId;
+  final LatLng fallback;
+  final _positions = PositionService();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<LatLng?>(
+      stream: _positions.watchOne(ambulanceId),
+      builder: (context, snapshot) {
+        return MarkerLayer(markers: [
+          Marker(
+            point: snapshot.data ?? fallback,
+            child: const Icon(Icons.local_hospital,
+                color: Colors.blue, size: 36),
+          ),
+        ]);
+      },
     );
   }
 }
