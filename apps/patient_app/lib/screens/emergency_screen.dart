@@ -269,6 +269,21 @@ class _TrackingViewState extends State<TrackingView> {
                             Text(label,
                                 style:
                                     const TextStyle(fontWeight: FontWeight.bold)),
+                            if (_eta != null &&
+                                const {'assigned', 'accepted', 'enRoute'}
+                                    .contains(status))
+                              Padding(
+                                padding: const EdgeInsets.only(left: 10),
+                                child: Text(
+                                  _eta!.inMinutes < 1
+                                      ? '· ETA <1 min'
+                                      : '· ETA ~${_eta!.inMinutes} min',
+                                  style: const TextStyle(
+                                    color: Colors.indigo,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
