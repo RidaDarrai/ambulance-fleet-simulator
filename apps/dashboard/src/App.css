@@ -252,3 +252,38 @@ button:disabled {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.timeline {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.timeline li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+  color: #90a4ae;
+}
+
+.timeline li.done { color: #37474f; }
+.timeline li.current { color: #1565c0; font-weight: 700; }
+
+.tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #cfd8dc;
+  flex: none;
+}
+
+.timeline li.done .tl-dot { background: #2e7d32; }
+.timeline li.current .tl-dot {
+  background: #1565c0;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.2);
+}
+
+.tl-label { flex: 1; }
+.tl-time { font-size: 11px; color: #90a4ae; }
