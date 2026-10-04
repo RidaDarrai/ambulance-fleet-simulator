@@ -43,6 +43,10 @@ class ChatService {
         );
   }
 
+  Stream<int> watchCount(String missionId) {
+    return _thread(missionId).snapshots().map((snap) => snap.docs.length);
+  }
+
   Future<void> send(String missionId, String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return Future.value();
