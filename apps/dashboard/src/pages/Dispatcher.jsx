@@ -145,8 +145,8 @@ export default function Dispatcher() {
 
   return (
     <div className="dispatcher-layout">
-      {loadError && <div className="crash-box">Load error: {loadError}</div>}
       <aside className="queue-pane">
+        {loadError && <div className="crash-box">Load error: {loadError}</div>}
         <h3>Request queue ({queue.length})</h3>
         {queue.length === 0 && (
           <p className="muted">No pending requests.</p>

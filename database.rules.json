@@ -1,10 +1,8 @@
 {
   "rules": {
     "positions": {
-      "$ambulanceId": {
-        ".read": "auth != null || true",
-        ".write": "auth != null"
-      }
+      ".read": true,
+      ".write": "auth != null"
     },
     "calls": {
       "$callId": {
