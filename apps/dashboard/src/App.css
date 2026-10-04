@@ -342,3 +342,15 @@ button:disabled {
   border: 1px solid #ccd2d8;
   border-radius: 8px;
 }
+
+.call-row {
+  margin: 6px 0;
+}
+
+.call-row a {
+  color: #1565c0;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.call-row a:hover { text-decoration: underline; }

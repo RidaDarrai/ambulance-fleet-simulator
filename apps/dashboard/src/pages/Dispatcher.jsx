@@ -206,6 +206,13 @@ export default function Dispatcher() {
             ) : (
               <p className="muted">Guest caller — no medical profile.</p>
             )}
+            {selected.patientPhone && (
+              <p className="call-row">
+                <a href={`tel:${selected.patientPhone}`}>
+                  Call {selected.patientPhone}
+                </a>
+              </p>
+            )}
 
             <button onClick={onSuggest} disabled={busy}>
               Suggest nearest unit
