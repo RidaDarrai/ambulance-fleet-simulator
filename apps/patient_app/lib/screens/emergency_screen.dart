@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/chat_service.dart';
+import '../services/contact_service.dart';
 import '../services/mission_service.dart';
 import '../services/position_service.dart';
 import '../services/profile_service.dart';
@@ -326,6 +327,12 @@ class _TrackingViewState extends State<TrackingView> {
                         label: const Text('Chat'),
                       );
                     },
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: () => launchCall(kDispatchHotline),
+                    icon: const Icon(Icons.call),
+                    label: const Text('Call'),
                   ),
                   const SizedBox(width: 12),
                   TextButton.icon(
