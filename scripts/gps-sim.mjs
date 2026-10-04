@@ -37,6 +37,43 @@ export async function writePosition(ambulanceId, lat, lng, speedKmh = 0) {
   });
 }
 
+export function haversineKm(a, b) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+export function interp(a, b, t) {
+  return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+}
+
+// Advances distKm along route; mutates state {i, t} (segment index + km into it).
+export function advance(route, state, distKm) {
+  for (let guard = 0; guard < 1000; guard++) {
+    if (state.i >= route.length - 1) {
+      return { point: route[route.length - 1], done: true };
+    }
+    const a = route[state.i];
+    const b = route[state.i + 1];
+    const segLen = haversineKm(a, b);
+    const remaining = segLen - state.t;
+    if (distKm < remaining) {
+      state.t += distKm;
+      const f = segLen === 0 ? 1 : state.t / segLen;
+      return { point: interp(a, b, f), done: false };
+    }
+    distKm -= remaining;
+    state.i += 1;
+    state.t = 0;
+  }
+  return { point: route[route.length - 1], done: true };
+}
+
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replaceAll('\\', '/').split('/').pop());
 
 if (isMain) {
