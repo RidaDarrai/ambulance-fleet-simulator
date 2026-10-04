@@ -13,6 +13,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { db, rtdb } from '../lib/firebase';
 import { suggestNearest, ACTIVE_STATUSES } from '../lib/geoutils';
+import MissionTimeline from '../components/MissionTimeline';
 
 const STATUS_LABELS = {
   requested: 'Requested',
@@ -248,6 +249,7 @@ export default function Dispatcher() {
               Patient at {selected.location?.lat?.toFixed(4)},{' '}
               {selected.location?.lng?.toFixed(4)}
             </p>
+            <MissionTimeline mission={selected} />
           </div>
         )}
 
