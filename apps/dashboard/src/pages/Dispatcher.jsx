@@ -16,6 +16,7 @@ import { suggestNearest, ACTIVE_STATUSES, etaLabel } from '../lib/geoutils';
 import MissionTimeline from '../components/MissionTimeline';
 import MissionRoute from '../components/MissionRoute';
 import MapPanner from '../components/MapPanner';
+import ChatPanel from '../components/ChatPanel';
 
 const STATUS_LABELS = {
   requested: 'Requested',
@@ -269,6 +270,7 @@ export default function Dispatcher() {
                 </p>
               )}
             <MissionTimeline mission={selected} />
+            <ChatPanel missionId={selected.id} myRole="dispatcher" />
           </div>
         )}
 
