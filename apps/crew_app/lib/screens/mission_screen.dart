@@ -70,6 +70,8 @@ class _MissionScreenState extends State<MissionScreen> {
               _action(active.id, 'Arrived at hospital', 'atHospital'),
             if (status == 'atHospital')
               _action(active.id, 'Complete mission', 'resolved'),
+            const SizedBox(height: 16),
+            _ChatCard(service: _service, missionId: active.id),
           ],
         );
       },
@@ -125,6 +127,114 @@ class _MissionScreenState extends State<MissionScreen> {
         onChanged: (v) {
           if (v != null) _service.setHospital(missionId, v);
         },
+      ),
+    );
+  }
+}
+
+class _ChatCard extends StatefulWidget {
+  const _ChatCard({required this.service, required this.missionId});
+
+  final CrewService service;
+  final String missionId;
+
+  @override
+  State<_ChatCard> createState() => _ChatCardState();
+}
+
+class _ChatCardState extends State<_ChatCard> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final text = _controller.text;
+    if (text.trim().isEmpty) return;
+    widget.service.sendMessage(widget.missionId, text);
+    _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Messages', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: widget.service.watchMessages(widget.missionId),
+              builder: (context, snapshot) {
+                final messages = snapshot.data ?? const [];
+                if (messages.isEmpty) {
+                  return const Text('No messages yet.');
+                }
+                return Column(
+                  children: messages.reversed.map((m) {
+                    final mine = m['senderRole'] == 'crew';
+                    final role = switch (m['senderRole']) {
+                      'dispatcher' => 'Dispatch',
+                      'patient' => 'Patient',
+                      'crew' => 'You',
+                      _ => '?',
+                    };
+                    return Align(
+                      alignment: mine
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        decoration: BoxDecoration(
+                          color: mine
+                              ? Colors.blue.shade50
+                              : Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(role,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall),
+                            Text('${m['text']}'),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration:
+                        const InputDecoration(hintText: 'Message…'),
+                    onSubmitted: (_) => _send(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _send,
+                  icon: const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
