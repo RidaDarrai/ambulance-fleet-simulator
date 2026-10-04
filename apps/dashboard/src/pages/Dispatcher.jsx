@@ -134,12 +134,12 @@ export default function Dispatcher() {
   }
 
   const fleetPoints = ambulances
-    .filter((a) => a.data.status === 'active')
+    .filter((a) => a.status === 'active')
     .map((a) => ({
       id: a.id,
-      plate: a.data.plate ?? a.id,
-      point: positions[a.id] ?? a.data.base,
-      status: a.data.status,
+      plate: a.plate ?? a.id,
+      point: positions[a.id] ?? a.base,
+      status: a.status,
     }))
     .filter((a) => a.point);
 

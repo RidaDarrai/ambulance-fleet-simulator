@@ -23,7 +23,7 @@ export const ACTIVE_STATUSES = [
 
 /**
  * @param {{lat:number,lng:number}} target mission location
- * @param {Array<{id:string,data:object}>} ambulances active fleet
+ * @param {Array<{id:string,status:string,plate?:string,base?:{lat:number,lng:number}}>} ambulances active fleet (flat docs)
  * @param {Record<string,{lat:number,lng:number}>} positions live RTDB positions
  * @param {string[]} busyAmbulanceIds ids with an active mission
  * @returns {{ambulanceId:string,plate:string,distanceKm:number}|null}
@@ -31,13 +31,13 @@ export const ACTIVE_STATUSES = [
 export function suggestNearest(target, ambulances, positions, busyAmbulanceIds) {
   let best = null;
   for (const a of ambulances) {
-    if (a.data.status !== 'active') continue;
+    if (a.status !== 'active') continue;
     if (busyAmbulanceIds.includes(a.id)) continue;
-    const pos = positions[a.id] ?? a.data.base;
+    const pos = positions[a.id] ?? a.base;
     if (!pos) continue;
     const km = haversineKm(target, pos);
     if (!best || km < best.distanceKm) {
-      best = { ambulanceId: a.id, plate: a.data.plate ?? a.id, distanceKm: km };
+      best = { ambulanceId: a.id, plate: a.plate ?? a.id, distanceKm: km };
     }
   }
   return best;
