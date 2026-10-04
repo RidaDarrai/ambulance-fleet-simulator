@@ -30,6 +30,13 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
   String? _missionId;
   LatLng _picked = kCityCenter;
   bool _busy = false;
+  final _phoneController = TextEditingController();
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   Future<void> _useGps() async {
     try {
@@ -63,9 +70,24 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Send emergency request?'),
-        content: Text(
-          'Location: ${_picked.latitude.toStringAsFixed(4)}, '
-          '${_picked.longitude.toStringAsFixed(4)}',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Location: ${_picked.latitude.toStringAsFixed(4)}, '
+              '${_picked.longitude.toStringAsFixed(4)}',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Callback number (optional)',
+                hintText: 'e.g. 0612345678',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -86,6 +108,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
         lat: _picked.latitude,
         lng: _picked.longitude,
         patientId: _profile.current?.uid,
+        phone: _phoneController.text.trim(),
       );
       setState(() => _missionId = id);
     } catch (_) {

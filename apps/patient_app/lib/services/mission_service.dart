@@ -7,10 +7,12 @@ class MissionService {
     required double lat,
     required double lng,
     String? patientId,
+    String? phone,
   }) async {
     final doc = await _db.collection('missions').add({
       'status': 'requested',
       'patientId': patientId,
+      if (phone != null && phone.isNotEmpty) 'patientPhone': phone,
       'location': {'lat': lat, 'lng': lng},
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
