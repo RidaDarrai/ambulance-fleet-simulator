@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
@@ -12,7 +12,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { db, rtdb } from '../lib/firebase';
-import { suggestNearest, ACTIVE_STATUSES } from '../lib/geoutils';
+import { suggestNearest, ACTIVE_STATUSES, etaLabel } from '../lib/geoutils';
 import MissionTimeline from '../components/MissionTimeline';
 import MissionRoute from '../components/MissionRoute';
 import MapPanner from '../components/MapPanner';
@@ -50,6 +50,9 @@ export default function Dispatcher() {
   const [patientInfo, setPatientInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [trackedEta, setTrackedEta] = useState(null);
+
+  const handleEta = useCallback((sec, km) => setTrackedEta({ sec, km }), []);
 
   useEffect(() => {
     const unsubMissions = onSnapshot(
@@ -95,6 +98,7 @@ export default function Dispatcher() {
   useEffect(() => {
     setSuggestion(null);
     setPatientInfo(null);
+    setTrackedEta(null);
     if (!selected?.patientId) return;
     getDoc(doc(db, 'patients', selected.patientId)).then((snap) => {
       if (snap.exists()) setPatientInfo(snap.data());
@@ -257,6 +261,13 @@ export default function Dispatcher() {
               Patient at {selected.location?.lat?.toFixed(4)},{' '}
               {selected.location?.lng?.toFixed(4)}
             </p>
+            {trackedEta &&
+              ['assigned', 'accepted', 'enRoute'].includes(selected.status) && (
+                <p className="route-eta">
+                  ETA {etaLabel(trackedEta.sec)} ·{' '}
+                  {trackedEta.km.toFixed(1)} km
+                </p>
+              )}
             <MissionTimeline mission={selected} />
           </div>
         )}
@@ -321,6 +332,7 @@ export default function Dispatcher() {
               key={selected.id}
               mission={selected}
               ambulancePoint={selectedAmbPoint}
+              onEta={handleEta}
             />
           )}
         </MapContainer>
