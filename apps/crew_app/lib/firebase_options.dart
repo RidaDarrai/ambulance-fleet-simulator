@@ -54,6 +54,7 @@ class DefaultFirebaseOptions {
     appId: '1:823967188310:web:8cd821eb79a90f71db82f7',
     messagingSenderId: '823967188310',
     projectId: 'ambulance-dispatch-sim',
+    databaseURL: 'https://ambulance-dispatch-sim-default-rtdb.firebaseio.com',
     authDomain: 'ambulance-dispatch-sim.firebaseapp.com',
     storageBucket: 'ambulance-dispatch-sim.firebasestorage.app',
   );
@@ -63,6 +64,7 @@ class DefaultFirebaseOptions {
     appId: '1:823967188310:android:b2f38e24d854358bdb82f7',
     messagingSenderId: '823967188310',
     projectId: 'ambulance-dispatch-sim',
+    databaseURL: 'https://ambulance-dispatch-sim-default-rtdb.firebaseio.com',
     storageBucket: 'ambulance-dispatch-sim.firebasestorage.app',
   );
 }
