@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -12,6 +12,34 @@ import Dispatcher from './pages/Dispatcher';
 import Admin from './pages/Admin';
 import './App.css';
 
+class ErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('App crashed:', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="crash-box">
+          <h2>Something went wrong</h2>
+          <pre>{String(this.state.error)}</pre>
+          <pre>{this.state.error.stack}</pre>
+          <button onClick={() => this.setState({ error: null })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -20,10 +48,15 @@ export default function App() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (u) {
-        const token = await u.getIdTokenResult();
-        setRole(token.claims.role || null);
-      } else {
+      try {
+        if (u) {
+          const token = await u.getIdTokenResult();
+          setRole(token.claims.role || null);
+        } else {
+          setRole(null);
+        }
+      } catch (e) {
+        console.error('Token error:', e);
         setRole(null);
       }
       setLoading(false);
@@ -36,38 +69,40 @@ export default function App() {
   const home = role === 'admin' ? '/admin' : role === 'dispatcher' ? '/dispatcher' : '/login';
 
   return (
-    <BrowserRouter>
-      {user && (
-        <header className="topbar">
-          <span className="brand">Ambulance Dispatch</span>
-          <span className="who">{user.email} ({role || 'no role'})</span>
-          <button onClick={() => signOut(auth)}>Sign out</button>
-        </header>
-      )}
-      <Routes>
-        <Route
-          path="/login"
-          element={user ? <Navigate to={home} replace /> : <Login />}
-        />
-        <Route
-          path="/dispatcher"
-          element={
-            user && role === 'dispatcher' ? (
-              <Dispatcher />
-            ) : (
-              <Denied user={user} role={role} />
-            )
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            user && role === 'admin' ? <Admin /> : <Denied user={user} role={role} />
-          }
-        />
-        <Route path="*" element={<Navigate to={user ? home : '/login'} replace />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        {user && (
+          <header className="topbar">
+            <span className="brand">Ambulance Dispatch</span>
+            <span className="who">{user.email} ({role || 'no role'})</span>
+            <button onClick={() => signOut(auth)}>Sign out</button>
+          </header>
+        )}
+        <Routes>
+          <Route
+            path="/login"
+            element={user ? <Navigate to={home} replace /> : <Login />}
+          />
+          <Route
+            path="/dispatcher"
+            element={
+              user && role === 'dispatcher' ? (
+                <Dispatcher />
+              ) : (
+                <Denied user={user} role={role} />
+              )
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              user && role === 'admin' ? <Admin /> : <Denied user={user} role={role} />
+            }
+          />
+          <Route path="*" element={<Navigate to={user ? home : '/login'} replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

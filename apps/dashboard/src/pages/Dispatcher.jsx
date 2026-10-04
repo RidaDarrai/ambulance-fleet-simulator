@@ -46,20 +46,24 @@ export default function Dispatcher() {
   const [manualPick, setManualPick] = useState('');
   const [patientInfo, setPatientInfo] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    const unsubMissions = onSnapshot(collection(db, 'missions'), (snap) => {
-      setMissions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    const unsubMissions = onSnapshot(
+      collection(db, 'missions'),
+      (snap) => setMissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => setLoadError(`missions: ${err.message}`)
+    );
     const unsubAmbulances = onSnapshot(
       collection(db, 'ambulances'),
-      (snap) => {
-        setAmbulances(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }
+      (snap) => setAmbulances(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => setLoadError(`ambulances: ${err.message}`)
     );
-    const unsubPositions = onValue(ref(rtdb, 'positions'), (snap) => {
-      setPositions(snap.val() || {});
-    });
+    const unsubPositions = onValue(
+      ref(rtdb, 'positions'),
+      (snap) => setPositions(snap.val() || {}),
+      (err) => setLoadError(`positions: ${err.message}`)
+    );
     return () => {
       unsubMissions();
       unsubAmbulances();
@@ -141,6 +145,7 @@ export default function Dispatcher() {
 
   return (
     <div className="dispatcher-layout">
+      {loadError && <div className="crash-box">Load error: {loadError}</div>}
       <aside className="queue-pane">
         <h3>Request queue ({queue.length})</h3>
         {queue.length === 0 && (

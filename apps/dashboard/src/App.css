@@ -241,3 +241,14 @@ button:disabled {
 .leaflet-container {
   background: #dfe4e8;
 }
+
+.crash-box {
+  padding: 24px;
+  background: #fff0f0;
+  border: 2px solid #c62828;
+  margin: 16px;
+  border-radius: 8px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
