@@ -11,6 +11,7 @@ import '../services/mission_service.dart';
 import '../services/position_service.dart';
 import '../services/profile_service.dart';
 import '../services/routing_service.dart';
+import '../widgets/chat_sheet.dart';
 import 'fleet_map_screen.dart';
 
 class EmergencyScreen extends StatefulWidget {
@@ -297,6 +298,16 @@ class _TrackingViewState extends State<TrackingView> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () => ChatSheet.open(
+                      context,
+                      missionId: widget.missionId,
+                      title: 'Message dispatch & crew',
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    label: const Text('Chat'),
+                  ),
+                  const SizedBox(width: 12),
                   TextButton.icon(
                     onPressed: widget.onAbort,
                     icon: const Icon(Icons.close),
