@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/contact_service.dart';
 import '../services/crew_service.dart';
 import '../services/position_service.dart';
 
@@ -78,10 +79,22 @@ class _OpsScreenState extends State<OpsScreen> {
             if (_ambulance != null)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  '${_ambulance!['plate'] ?? ''} — '
-                  'status: ${_ambulance!['status'] ?? ''}',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_ambulance!['plate'] ?? ''} — '
+                        'status: ${_ambulance!['status'] ?? ''}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () => launchCall(kDispatchHotline),
+                      icon: const Icon(Icons.call),
+                      label: const Text('Dispatch'),
+                    ),
+                  ],
                 ),
               ),
           ],
