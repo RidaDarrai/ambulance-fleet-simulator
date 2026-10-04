@@ -167,7 +167,7 @@ export default function Dispatcher() {
           ))}
         </ul>
 
-        {selected && (
+        {selected?.status === 'requested' && (
           <div className="request-placeholder">
             <strong>Request #{selected.id.slice(0, 6)}</strong>
             <p className="muted">
@@ -232,10 +232,33 @@ export default function Dispatcher() {
           </div>
         )}
 
+        {selected && selected.status !== 'requested' && (
+          <div className="request-placeholder">
+            <strong>Mission #{selected.id.slice(0, 6)}</strong>{' '}
+            <span className={`status st-${selected.status}`}>
+              {STATUS_LABELS[selected.status] ?? selected.status}
+            </span>
+            <p className="muted">
+              Ambulance:{' '}
+              {fleetPoints.find((a) => a.id === selected.ambulanceId)?.plate ??
+                selected.ambulanceId ??
+                '—'}
+            </p>
+            <p className="muted">
+              Patient at {selected.location?.lat?.toFixed(4)},{' '}
+              {selected.location?.lng?.toFixed(4)}
+            </p>
+          </div>
+        )}
+
         <h3>Active missions ({active.length})</h3>
         <ul className="queue-list">
           {active.map((m) => (
-            <li key={m.id}>
+            <li
+              key={m.id}
+              className={m.id === selectedId ? 'selected' : ''}
+              onClick={() => setSelectedId(m.id)}
+            >
               <strong>#{m.id.slice(0, 6)}</strong>{' '}
               <span className={`status st-${m.status}`}>
                 {STATUS_LABELS[m.status] ?? m.status}
