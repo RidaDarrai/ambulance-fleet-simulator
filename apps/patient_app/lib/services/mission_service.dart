@@ -24,6 +24,12 @@ class MissionService {
   Stream<DocumentSnapshot<Map<String, dynamic>>> watch(String id) =>
       _db.collection('missions').doc(id).snapshots();
 
+  Future<Map<String, dynamic>?> hospitalLocation(String id) async {
+    final snap = await _db.collection('hospitals').doc(id).get();
+    final loc = snap.data()?['location'];
+    return loc is Map<String, dynamic> ? loc : null;
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> watchFleet() => _db
       .collection('ambulances')
       .where('status', isEqualTo: 'active')
