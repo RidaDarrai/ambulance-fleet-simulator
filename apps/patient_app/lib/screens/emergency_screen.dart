@@ -267,6 +267,8 @@ class _TrackingViewState extends State<TrackingView> {
                         _RouteLayer(
                           patientPoint: patientPoint,
                           ambulanceId: ambulanceId,
+                          status: status,
+                          hospitalId: data['hospitalId'] as String?,
                           onEta: _onEta,
                         ),
                       if (ambulanceId != null)
@@ -299,8 +301,14 @@ class _TrackingViewState extends State<TrackingView> {
                                 style:
                                     const TextStyle(fontWeight: FontWeight.bold)),
                             if (_eta != null &&
-                                const {'assigned', 'accepted', 'enRoute'}
-                                    .contains(status))
+                                const {
+                                  'assigned',
+                                  'accepted',
+                                  'enRoute',
+                                  'onScene',
+                                  'transporting',
+                                  'atHospital',
+                                }.contains(status))
                               Padding(
                                 padding: const EdgeInsets.only(left: 10),
                                 child: Text(
@@ -377,11 +385,15 @@ class _RouteLayer extends StatefulWidget {
   const _RouteLayer({
     required this.patientPoint,
     required this.ambulanceId,
+    required this.status,
+    required this.hospitalId,
     required this.onEta,
   });
 
   final LatLng patientPoint;
   final String ambulanceId;
+  final String status;
+  final String? hospitalId;
   final void Function(Duration?) onEta;
 
   @override
@@ -391,11 +403,19 @@ class _RouteLayer extends StatefulWidget {
 class _RouteLayerState extends State<_RouteLayer> {
   final _routing = RoutingService();
   final _positions = PositionService();
+  final _missions = MissionService();
   StreamSubscription<LatLng?>? _sub;
   List<LatLng> _line = const [];
   LatLng? _lastFetch;
   DateTime _lastFetchAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _fetching = false;
+  String? _targetKey;
+  LatLng? _cachedTarget;
+
+  static const _toPatient = {'assigned', 'accepted', 'enRoute'};
+  static const _toHospital = {'onScene', 'transporting', 'atHospital'};
+
+  String get _key => '${widget.status}|${widget.hospitalId ?? ''}';
 
   @override
   void initState() {
@@ -409,11 +429,28 @@ class _RouteLayerState extends State<_RouteLayer> {
     if (old.ambulanceId != widget.ambulanceId) {
       _sub?.cancel();
       _sub = _positions.watchOne(widget.ambulanceId).listen(_onPosition);
-    } else if (old.patientPoint != widget.patientPoint) {
-      _lastFetchAt = DateTime.fromMillisecondsSinceEpoch(0);
+      _targetKey = null;
+    } else if (old.status != widget.status ||
+        old.hospitalId != widget.hospitalId ||
+        old.patientPoint != widget.patientPoint) {
+      _targetKey = null;
       final from = _lastFetch;
-      if (from != null) _fetch(from);
+      if (from != null) _refresh(from, force: true);
     }
+  }
+
+  Future<LatLng?> _resolveTarget() async {
+    if (_toPatient.contains(widget.status)) return widget.patientPoint;
+    if (_toHospital.contains(widget.status) && widget.hospitalId != null) {
+      final loc = await _missions.hospitalLocation(widget.hospitalId!);
+      if (loc != null && loc['lat'] is num && loc['lng'] is num) {
+        return LatLng(
+          (loc['lat'] as num).toDouble(),
+          (loc['lng'] as num).toDouble(),
+        );
+      }
+    }
+    return null;
   }
 
   Future<void> _onPosition(LatLng? pos) async {
@@ -423,16 +460,25 @@ class _RouteLayerState extends State<_RouteLayer> {
         ? double.infinity
         : const Distance().as(LengthUnit.Kilometer, _lastFetch!, pos);
     if (movedKm < 0.05 || now.difference(_lastFetchAt).inSeconds < 3) return;
-    await _fetch(pos);
+    await _refresh(pos);
   }
 
-  Future<void> _fetch(LatLng from) async {
+  Future<void> _refresh(LatLng from, {bool force = false}) async {
     if (_fetching) return;
     _fetching = true;
-    _lastFetch = from;
-    _lastFetchAt = DateTime.now();
     try {
-      final res = await _routing.route(from, widget.patientPoint);
+      if (force || _targetKey != _key) {
+        _cachedTarget = await _resolveTarget();
+        _targetKey = _key;
+      }
+      final target = _cachedTarget;
+      if (!mounted || target == null) {
+        if (mounted && _line.isNotEmpty) setState(() => _line = const []);
+        return;
+      }
+      _lastFetch = from;
+      _lastFetchAt = DateTime.now();
+      final res = await _routing.route(from, target);
       if (!mounted) return;
       setState(() => _line = res.points);
       widget.onEta(res.duration);
