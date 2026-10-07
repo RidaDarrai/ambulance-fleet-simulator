@@ -90,6 +90,12 @@ class CrewService {
         .toList();
   }
 
+  Future<Map<String, dynamic>?> hospitalLocation(String id) async {
+    final snap = await _db.collection('hospitals').doc(id).get();
+    final loc = snap.data()?['location'];
+    return loc is Map<String, dynamic> ? loc : null;
+  }
+
   CollectionReference<Map<String, dynamic>> _thread(String missionId) =>
       _db.collection('missions').doc(missionId).collection('messages');
 
