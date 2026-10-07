@@ -44,6 +44,7 @@ const suggestedIcon = icon('mk-sug', '★');
 export default function Dispatcher() {
   const [missions, setMissions] = useState([]);
   const [ambulances, setAmbulances] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
   const [positions, setPositions] = useState({});
   const [selectedId, setSelectedId] = useState(null);
   const [suggestion, setSuggestion] = useState(null);
@@ -66,6 +67,11 @@ export default function Dispatcher() {
       (snap) => setAmbulances(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
       (err) => setLoadError(`ambulances: ${err.message}`)
     );
+    const unsubHospitals = onSnapshot(
+      collection(db, 'hospitals'),
+      (snap) => setHospitals(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => setLoadError(`hospitals: ${err.message}`)
+    );
     const unsubPositions = onValue(
       ref(rtdb, 'positions'),
       (snap) => setPositions(snap.val() || {}),
@@ -74,6 +80,7 @@ export default function Dispatcher() {
     return () => {
       unsubMissions();
       unsubAmbulances();
+      unsubHospitals();
       unsubPositions();
     };
   }, []);
@@ -270,7 +277,14 @@ export default function Dispatcher() {
               {selected.location?.lng?.toFixed(4)}
             </p>
             {trackedEta &&
-              ['assigned', 'accepted', 'enRoute'].includes(selected.status) && (
+              [
+                'assigned',
+                'accepted',
+                'enRoute',
+                'onScene',
+                'transporting',
+                'atHospital',
+              ].includes(selected.status) && (
                 <p className="route-eta">
                   ETA {etaLabel(trackedEta.sec)} ·{' '}
                   {trackedEta.km.toFixed(1)} km
@@ -341,6 +355,12 @@ export default function Dispatcher() {
               key={selected.id}
               mission={selected}
               ambulancePoint={selectedAmbPoint}
+              hospitalLocation={
+                selected.hospitalId
+                  ? hospitals.find((h) => h.id === selected.hospitalId)
+                      ?.location ?? null
+                  : null
+              }
               onEta={handleEta}
             />
           )}
