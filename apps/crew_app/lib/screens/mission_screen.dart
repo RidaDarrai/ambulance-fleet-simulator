@@ -64,7 +64,7 @@ class _MissionScreenState extends State<MissionScreen> {
             if (status == 'onScene') ...[
               _hospitalPicker(active.id, hospitalId),
               _action(active.id, 'Start transport', 'transporting',
-                  requiresHospital: hospitalId != null),
+                  requiresHospital: hospitalId == null),
             ],
             if (status == 'transporting')
               _action(active.id, 'Arrived at hospital', 'atHospital'),
