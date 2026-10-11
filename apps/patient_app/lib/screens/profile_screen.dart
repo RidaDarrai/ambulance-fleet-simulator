@@ -1,172 +1,187 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-import '../services/profile_service.dart';
+import '../core/app_state.dart';
+import '../core/tokens.dart';
+import '../widgets/atoms.dart';
+import 'help_screen.dart';
+import 'medical_profile_screen.dart';
+import 'settings_screen.dart';
+import 'sign_in_screen.dart';
 
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
-
-  @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends State<ProfileScreen> {
-  final _service = ProfileService();
-
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  final _bloodType = TextEditingController();
-  final _allergies = TextEditingController();
-  final _conditions = TextEditingController();
-  final _contact = TextEditingController();
-
-  bool _signUpMode = false;
-  bool _busy = false;
-  String? _error;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _service.authChanges.listen((user) {
-      if (user != null && !_loaded) _loadProfile();
-      if (user == null) setState(() => _loaded = false);
-    });
-  }
-
-  Future<void> _loadProfile() async {
-    final data = await _service.loadProfile();
-    if (data != null && mounted) {
-      _bloodType.text = data['bloodType'] ?? '';
-      _allergies.text = data['allergies'] ?? '';
-      _conditions.text = data['conditions'] ?? '';
-      _contact.text = data['emergencyContact'] ?? '';
-    }
-    if (mounted) setState(() => _loaded = true);
-  }
-
-  Future<void> _submitAuth() async {
-    setState(() { _busy = true; _error = null; });
-    try {
-      if (_signUpMode) {
-        await _service.signUp(_email.text.trim(), _password.text);
-      } else {
-        await _service.signIn(_email.text.trim(), _password.text);
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = e.message ?? 'Authentication failed');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _save() async {
-    setState(() => _busy = true);
-    await _service.saveProfile(
-      bloodType: _bloodType.text.trim(),
-      allergies: _allergies.text.trim(),
-      conditions: _conditions.text.trim(),
-      emergencyContact: _contact.text.trim(),
-    );
-    if (mounted) {
-      setState(() => _busy = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Profile saved')));
-    }
-  }
+/// Profile tab (IA §3.10): guest sign-in card OR medical summary + edit.
+/// Settings moved here as a pushed screen (approved 3-tab shell).
+class ProfileScreen extends StatelessWidget {
+  final AppState state;
+  const ProfileScreen({super.key, required this.state});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: _service.authChanges,
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        if (user == null) return _buildAuthForm();
-        if (!_loaded) return const Center(child: CircularProgressIndicator());
-        return _buildProfileForm();
-      },
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('Profile')),
+      body: ListenableBuilder(
+        listenable: state,
+        builder: (context, _) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ...(state.isAuthenticated
+                  ? _authenticated(context, theme)
+                  : _guest(theme, context)),
+              gapH(24),
+              _navTile(
+                context,
+                theme,
+                icon: Icons.help_outline_rounded,
+                label: 'Help & FAQ',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => HelpScreen(state: state)),
+                ),
+              ),
+              gapH(8),
+              _navTile(
+                context,
+                theme,
+                icon: Icons.settings_outlined,
+                label: 'Settings',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => SettingsScreen(state: state)),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildAuthForm() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Medical profile'),
-            subtitle: const Text(
-                'Sign in to store blood type, allergies and contacts'),
+  List<Widget> _guest(ThemeData theme, BuildContext context) => [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppColors.radiusLg),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.person_outline_rounded, size: 40),
+              gapW(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("You're using the app as a guest",
+                        style: theme.textTheme.headlineSmall),
+                    Text(
+                        'Sign in to attach your medical profile to requests automatically.',
+                        style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _email,
-          decoration: const InputDecoration(labelText: 'Email'),
-          keyboardType: TextInputType.emailAddress,
-        ),
-        TextField(
-          controller: _password,
-          decoration: const InputDecoration(labelText: 'Password'),
-          obscureText: true,
-        ),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(_error!, style: const TextStyle(color: Colors.red)),
+        gapH(16),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => SignInScreen(state: state)),
           ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _busy ? null : _submitAuth,
-          child: Text(_busy
-              ? 'Please wait…'
-              : (_signUpMode ? 'Create account' : 'Sign in')),
+          icon: const Icon(Icons.login_rounded, size: 18),
+          label: const Text('Sign in'),
         ),
-        TextButton(
-          onPressed: () => setState(() => _signUpMode = !_signUpMode),
-          child: Text(_signUpMode
-              ? 'Already have an account? Sign in'
-              : 'No account? Sign up'),
-        ),
+      ];
+
+  List<Widget> _authenticated(BuildContext context, ThemeData theme) {
+    final p = state.medicalProfile;
+    return [
+      Text('Medical profile', style: theme.textTheme.headlineMedium),
+      gapH(2),
+      Text('Shared only when you send a request',
+          style: theme.textTheme.labelSmall),
+      gapH(12),
+      MedicalCard(profile: p),
+      if (p.contacts.isNotEmpty) ...[
+        gapH(12),
+        _FieldList(
+            'Contacts', p.contacts.map((c) => '${c.name} · ${c.phone}').toList()),
       ],
-    );
+      if (p.conditions.isNotEmpty) ...[
+        gapH(12),
+        _FieldList('Conditions', p.conditions),
+      ],
+      gapH(24),
+      OutlinedButton.icon(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => MedicalProfileScreen(state: state)),
+        ),
+        icon: const Icon(Icons.edit_rounded, size: 18),
+        label: const Text('Edit medical profile'),
+      ),
+      gapH(8),
+      TextButton(
+        onPressed: () {
+          state.signOut();
+        },
+        child: const Text('Sign out'),
+      ),
+    ];
   }
 
-  Widget _buildProfileForm() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
+  Widget _navTile(
+    BuildContext context,
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) =>
+      Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppColors.radiusMd),
+          side: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppColors.radiusMd),
+          ),
+          leading: Icon(icon, size: 22),
+          title: Text(label, style: theme.textTheme.bodyLarge),
+          trailing: Icon(Icons.chevron_right,
+              size: 22, color: theme.colorScheme.outline),
+          onTap: onTap,
+        ),
+      );
+}
+
+class _FieldList extends StatelessWidget {
+  final String title;
+  final List<String> items;
+  const _FieldList(this.title, this.items);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Medical profile',
-            style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _bloodType,
-          decoration: const InputDecoration(labelText: 'Blood type'),
-        ),
-        TextField(
-          controller: _allergies,
-          decoration: const InputDecoration(labelText: 'Critical allergies'),
-          maxLines: 2,
-        ),
-        TextField(
-          controller: _conditions,
-          decoration: const InputDecoration(labelText: 'Chronic conditions'),
-          maxLines: 2,
-        ),
-        TextField(
-          controller: _contact,
-          decoration: const InputDecoration(labelText: 'Emergency contact'),
-        ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _busy ? null : _save,
-          child: Text(_busy ? 'Saving…' : 'Save profile'),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton(
-          onPressed: () => _service.signOut(),
-          child: const Text('Sign out'),
+        SizedBox(width: 110, child: Text(title, style: theme.textTheme.labelLarge)),
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final item in items)
+                Chip(
+                  label: Text(item, style: theme.textTheme.bodySmall),
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+            ],
+          ),
         ),
       ],
     );
