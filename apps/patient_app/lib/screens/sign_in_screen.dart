@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -37,7 +39,15 @@ class _SignInScreenState extends State<SignInScreen> {
   int _resendSeconds = 30;
   Timer? _resendTimer;
 
+  // Real phone-auth session state (null until Firebase sends a code).
+  String? _verificationId;
+  int? _resendToken;
+
   AppState get state => widget.state;
+
+  /// Real auth only runs when Firebase initialized at boot; otherwise the
+  /// screen falls back to the demo path so walkthroughs still work.
+  bool get _firebaseReady => Firebase.apps.isNotEmpty;
 
   @override
   void dispose() {
@@ -59,9 +69,24 @@ class _SignInScreenState extends State<SignInScreen> {
     return null;
   }
 
+  /// Normalizes the typed number to E.164. Numbers starting with `+` are
+  /// taken as-is; otherwise we assume Morocco (+212) and drop a leading 0.
+  String? _e164() {
+    final raw = _phone.text.trim();
+    if (raw.startsWith('+')) {
+      final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
+      return d.length >= 8 ? '+$d' : null;
+    }
+    final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (d.length < 9) return null;
+    if (d.startsWith('212')) return '+$d';
+    if (d.startsWith('0')) return '+212${d.substring(1)}';
+    return '+212$d';
+  }
+
   Future<void> _sendCode() async {
-    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 9) {
+    final e164 = _e164();
+    if (e164 == null) {
       setState(() => _error = 'Enter a valid phone number.');
       return;
     }
@@ -69,20 +94,68 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
       _sending = true;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() {
-      _sending = false;
-      _step = 2;
-    });
-    _startResendCountdown();
-    // Focus the first OTP box once the step renders.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _otpFocus.first.requestFocus();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Code sent to ${_phone.text} · demo code 123456')),
-    );
+
+    // Demo fallback (no Firebase at boot): fake the send.
+    if (!_firebaseReady) {
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _step = 2;
+      });
+      _startResendCountdown();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _otpFocus.first.requestFocus();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Code sent · demo code 123456')),
+      );
+      return;
+    }
+
+    // Real phone auth.
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: e164,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (credential) async {
+          // Android instant verification / SMS auto-retrieval.
+          await _signInWithCredential(credential);
+        },
+        verificationFailed: (e) {
+          if (!mounted) return;
+          setState(() {
+            _sending = false;
+            _error = _friendlyAuthError(e);
+          });
+        },
+        codeSent: (verificationId, resendToken) {
+          if (!mounted) return;
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          setState(() {
+            _sending = false;
+            _step = 2;
+          });
+          _startResendCountdown();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _otpFocus.first.requestFocus();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Code sent to $e164')),
+          );
+        },
+        codeAutoRetrievalTimeout: (verificationId) {
+          _verificationId = verificationId;
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _error = 'Could not send the code. Check your connection and retry.';
+      });
+    }
   }
 
   void _startResendCountdown() {
@@ -140,30 +213,90 @@ class _SignInScreenState extends State<SignInScreen> {
       _verifying = true;
       _error = null;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() => _verifying = false);
-    if (_code == '123456') {
+
+    // Demo fallback (no Firebase at boot): accept the demo code.
+    if (!_firebaseReady) {
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (!mounted) return;
+      setState(() => _verifying = false);
+      if (_code == '123456') {
+        state.signIn();
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Signed in (demo)')));
+      } else {
+        setState(() => _error = "That code doesn't match. "
+            'Try again or request a new one.');
+        _clearOtp();
+      }
+      return;
+    }
+
+    // Real phone auth.
+    if (_verificationId == null) {
+      setState(() {
+        _verifying = false;
+        _error = 'Request a new code.';
+      });
+      return;
+    }
+    final credential = PhoneAuthProvider.credential(
+      verificationId: _verificationId!,
+      smsCode: _code,
+    );
+    await _signInWithCredential(credential);
+  }
+
+  Future<void> _signInWithCredential(PhoneAuthCredential credential) async {
+    try {
+      await FirebaseAuth.instance.signInWithCredential(credential);
       state.signIn();
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Signed in (demo)')));
-    } else {
-      setState(() => _error = "That code doesn't match. "
-          'Try again or request a new one.');
-      for (final c in _otp) {
-        c.clear();
-      }
-      _otpFocus.first.requestFocus();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Signed in')));
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _verifying = false;
+        _sending = false;
+        _error = _friendlyAuthError(e);
+      });
+      _clearOtp();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _verifying = false;
+        _error = "That code doesn't match. Try again or request a new one.";
+      });
+      _clearOtp();
     }
   }
 
+  void _clearOtp() {
+    for (final c in _otp) {
+      c.clear();
+    }
+    _otpFocus.first.requestFocus();
+  }
+
+  String _friendlyAuthError(FirebaseAuthException e) => switch (e.code) {
+        'invalid-phone-number' => 'That phone number isn\u2019t valid.',
+        'invalid-verification-code' =>
+          "That code doesn't match. Try again or request a new one.",
+        'session-expired' || 'code-expired' =>
+          'That code expired. Request a new one.',
+        'too-many-requests' => 'Too many attempts. Try again in a moment.',
+        'quota-exceeded' => 'SMS limit reached. Try again later.',
+        'app-not-authorized' =>
+          'Sign-in isn\u2019t configured for this app yet.',
+        _ => 'Something went wrong. Please try again.',
+      };
+
   void _resend() {
     if (_resendSeconds > 0) return;
-    _startResendCountdown();
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('New code sent · demo code 123456')));
+    _sendCode(); // countdown restarts in the codeSent / demo path
   }
 
   void _continueAsGuest() {
