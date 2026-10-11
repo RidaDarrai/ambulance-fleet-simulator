@@ -29,17 +29,15 @@ class MissionsScreen extends StatefulWidget {
 }
 
 class _MissionsScreenState extends State<MissionsScreen> {
-  /// 0 = Active, 1 = History. First visit with no mission lands on History
-  /// (the canonical empty state).
+  /// 0 = Active, 1 = History. Auto-selects Active whenever a mission is live
+  /// and History when idle — unless the user explicitly picks a segment, which
+  /// then sticks for the rest of the session. (Previously the segment was set
+  /// only in initState, so a mission that activated *after* the first build
+  /// left the tab stuck on the empty History view.)
   int _segment = 1;
+  bool _userChoseSegment = false;
 
   AppState get state => widget.state;
-
-  @override
-  void initState() {
-    super.initState();
-    if (_hasActive) _segment = 0;
-  }
 
   bool get _hasActive =>
       state.activeIncident != null &&
@@ -55,6 +53,9 @@ class _MissionsScreenState extends State<MissionsScreen> {
         listenable: state,
         builder: (context, _) {
           final active = _hasActive ? state.activeIncident : null;
+          // Follow the live mission unless the user has chosen a segment.
+          final segment =
+              _userChoseSegment ? _segment : (active != null ? 0 : 1);
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -71,13 +72,15 @@ class _MissionsScreenState extends State<MissionsScreen> {
                   ButtonSegment(value: 0, label: Text('Active')),
                   ButtonSegment(value: 1, label: Text('History')),
                 ],
-                selected: {_segment},
+                selected: {segment},
                 showSelectedIcon: false,
-                onSelectionChanged: (s) =>
-                    setState(() => _segment = s.first),
+                onSelectionChanged: (s) => setState(() {
+                  _userChoseSegment = true;
+                  _segment = s.first;
+                }),
               ),
               gapH(16),
-              if (_segment == 0)
+              if (segment == 0)
                 active == null
                   ? EmptyStateBox(
                       icon: Icons.navigation_outlined,
