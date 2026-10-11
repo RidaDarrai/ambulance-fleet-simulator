@@ -493,9 +493,7 @@ class _MissionMap extends StatelessWidget {
           children: [
             if (!offline)
               TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: kOsmTileUrl,
                 userAgentPackageName: 'com.ambulance.patient_app',
               ),
             // Offline: polyline frozen at the last known ping (spec §7).

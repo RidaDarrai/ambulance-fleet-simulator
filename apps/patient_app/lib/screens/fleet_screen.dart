@@ -176,9 +176,7 @@ class _FleetMap extends StatelessWidget {
           children: [
             if (!offline)
               TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: kOsmTileUrl,
                 userAgentPackageName: 'com.ambulance.patient_app',
               ),
             MarkerLayer(markers: markers),

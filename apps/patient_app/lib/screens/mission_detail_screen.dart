@@ -276,9 +276,7 @@ class _MissionDetailScreenState extends State<MissionDetailScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
+                      urlTemplate: kOsmTileUrl,
                       userAgentPackageName: 'com.ambulance.patient_app',
                     ),
                     PolylineLayer(
@@ -397,9 +395,7 @@ class _FullScreenRoute extends StatelessWidget {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: kOsmTileUrl,
                 userAgentPackageName: 'com.ambulance.patient_app',
               ),
               PolylineLayer(

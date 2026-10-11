@@ -186,9 +186,7 @@ class _RequestFlowScreenState extends State<RequestFlowScreen> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                    subdomains: const ['a', 'b', 'c', 'd'],
+                    urlTemplate: kOsmTileUrl,
                     userAgentPackageName: 'com.ambulance.patient_app',
                   ),
                   MarkerLayer(
@@ -607,9 +605,7 @@ class _RequestQueuedScreenState extends State<RequestQueuedScreen> {
           ),
           children: [
             TileLayer(
-              urlTemplate:
-                  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
+              urlTemplate: kOsmTileUrl,
               userAgentPackageName: 'com.ambulance.patient_app',
             ),
             MarkerLayer(

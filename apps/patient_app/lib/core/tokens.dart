@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+/// OpenStreetMap raster tile endpoint — free, no API key required.
+/// flutter_map substitutes `{z}`/`{x}`/`{y}`; there is no `{s}` subdomain, so
+/// `TileLayer.subdomains` is omitted. OSM offers a single (light) style, so it
+/// is used for both light and dark themes. Per OSM's tile-usage policy, keep
+/// `userAgentPackageName` set on each `TileLayer`.
+const String kOsmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
 /// Single source of truth for colors — mirrors `design-tokens.md` v1 exactly.
 /// Never hardcode hex values in widgets; always reference these tokens.
 abstract final class AppColors {
