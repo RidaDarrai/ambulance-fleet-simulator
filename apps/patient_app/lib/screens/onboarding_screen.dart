@@ -54,11 +54,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _finish() => widget.state.completeOnboarding();
 
   void _next() {
+    final next = _index + 1;
+    // `animateToPage` with a zero duration doesn't actually move the page, so
+    // jump explicitly when animations are off (e.g. the OS "reduce motion"
+    // setting) — otherwise Next silently does nothing.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.jumpToPage(next);
+      return;
+    }
     _controller.animateToPage(
-      _index + 1,
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 250),
+      next,
+      duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
   }
