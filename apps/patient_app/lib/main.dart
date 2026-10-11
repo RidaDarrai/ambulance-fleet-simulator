@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
+import 'core/firebase_repository.dart';
 import 'core/mission_status.dart';
 import 'firebase_options.dart';
 import 'screens/fleet_screen.dart';
@@ -13,6 +14,12 @@ import 'screens/profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/atoms.dart';
 import 'widgets/permission_primer.dart';
+
+/// Opt-in switch for the real backend. With no flag the app stays on the
+/// in-memory demo repository (via `AppState`'s default), so UI walkthroughs
+/// and tests need no backend. Run `flutter run --dart-define=LIVE=true` (or
+/// build with it) to drive Firestore / Auth / RTDB instead.
+const bool _kLive = bool.fromEnvironment('LIVE');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,7 +56,10 @@ class PatientApp extends StatefulWidget {
 }
 
 class _PatientAppState extends State<PatientApp> {
-  late final AppState _state = AppState();
+  late final AppState _state = AppState(
+      repository: (_kLive && Firebase.apps.isNotEmpty)
+          ? FirebaseRepository()
+          : null);
 
   @override
   void dispose() {
