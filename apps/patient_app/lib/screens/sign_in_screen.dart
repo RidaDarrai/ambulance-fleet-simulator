@@ -289,9 +289,17 @@ class _SignInScreenState extends State<SignInScreen> {
           'That code expired. Request a new one.',
         'too-many-requests' => 'Too many attempts. Try again in a moment.',
         'quota-exceeded' => 'SMS limit reached. Try again later.',
+        'invalid-app-credential' || 'captcha-check-failed' =>
+          'Verification failed. On web, add this number as a test number in '
+              'the Firebase console (Auth \u2192 Phone \u2192 Phone numbers for '
+              'testing), or use a real phone number.',
+        'operation-not-allowed' =>
+          'Phone sign-in isn\u2019t enabled in the Firebase console yet.',
+        'billing-not-enabled' => 'Phone sign-in needs billing enabled.',
+        'network-request-failed' => 'Network error. Check your connection.',
         'app-not-authorized' =>
           'Sign-in isn\u2019t configured for this app yet.',
-        _ => 'Something went wrong. Please try again.',
+        _ => 'Something went wrong (${e.code}). Please try again.',
       };
 
   void _resend() {
