@@ -54,7 +54,12 @@ abstract class AppRepository extends ChangeNotifier {
   void setFleetError(bool value);
 
   // ── Incident lifecycle ──────────────────────────────────────────────
-  void triggerRequest({LatLng? pickup, bool? medicalAttached});
+  /// [guestName] / [guestPhone] are the guest callback details the request
+  /// flow collects for unauthenticated users (spec §5) — the backend stores
+  /// them so dispatch can reach a guest back. Repositories remember the last
+  /// values so a retry (which re-sends without them) keeps them.
+  void triggerRequest(
+      {LatLng? pickup, bool? medicalAttached, String? guestName, String? guestPhone});
   void cancelRequest();
   void clearActiveIncident();
 

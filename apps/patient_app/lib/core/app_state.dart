@@ -81,8 +81,16 @@ class AppState extends ChangeNotifier {
       _repo.setSimulateSubmitError(value);
   void setSimulateSaveError(bool value) => _repo.setSimulateSaveError(value);
 
-  void triggerRequest({LatLng? pickup, bool? medicalAttached}) =>
-      _repo.triggerRequest(pickup: pickup, medicalAttached: medicalAttached);
+  void triggerRequest(
+          {LatLng? pickup,
+          bool? medicalAttached,
+          String? guestName,
+          String? guestPhone}) =>
+      _repo.triggerRequest(
+          pickup: pickup,
+          medicalAttached: medicalAttached,
+          guestName: guestName,
+          guestPhone: guestPhone);
   void cancelRequest() => _repo.cancelRequest();
   void clearActiveIncident() => _repo.clearActiveIncident();
 

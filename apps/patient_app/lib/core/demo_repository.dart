@@ -160,7 +160,11 @@ class DemoRepository extends AppRepository {
   /// When `simulateSubmitError` is on, nothing is created and `sendFailed`
   /// drives the error state on the queued screen (spec §6 error).
   @override
-  void triggerRequest({LatLng? pickup, bool? medicalAttached}) {
+  void triggerRequest(
+      {LatLng? pickup,
+      bool? medicalAttached,
+      String? guestName,
+      String? guestPhone}) {
     if (activeIncident != null) return;
     lastRequestPickup = pickup ?? userLocation;
     if (medicalAttached != null) lastRequestMedical = medicalAttached;

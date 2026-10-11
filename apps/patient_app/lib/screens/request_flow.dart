@@ -83,6 +83,8 @@ class _RequestFlowScreenState extends State<RequestFlowScreen> {
     state.triggerRequest(
       pickup: _pin,
       medicalAttached: state.isAuthenticated && _attachMedical,
+      guestName: state.isAuthenticated ? null : _name.text.trim(),
+      guestPhone: state.isAuthenticated ? null : _phone.text.trim(),
     );
     if (!mounted) return;
     setState(() => _sending = false);
