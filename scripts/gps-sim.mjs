@@ -74,7 +74,7 @@ export function advance(route, state, distKm) {
   return { point: route[route.length - 1], done: true };
 }
 
-const ACTIVE = [
+export const ACTIVE = [
   'assigned',
   'accepted',
   'enRoute',
@@ -83,14 +83,14 @@ const ACTIVE = [
   'atHospital',
 ];
 
-async function currentPos(ambulanceId, fallback) {
+export async function currentPos(ambulanceId, fallback) {
   const snap = await rtdb.ref(`positions/${ambulanceId}`).once('value');
   const v = snap.val();
   if (v && typeof v.lat === 'number') return { lat: v.lat, lng: v.lng };
   return fallback;
 }
 
-async function activeMission(ambulanceId) {
+export async function activeMission(ambulanceId) {
   const snap = await db
     .collection('missions')
     .where('ambulanceId', '==', ambulanceId)
@@ -100,7 +100,7 @@ async function activeMission(ambulanceId) {
     .find((m) => ACTIVE.includes(m.status)) ?? null;
 }
 
-async function targetFor(mission) {
+export async function targetFor(mission) {
   if (!mission) return null;
   if (mission.hospitalId) {
     const h = await db.collection('hospitals').doc(mission.hospitalId).get();

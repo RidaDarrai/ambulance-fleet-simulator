@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "gps": "node scripts/gps-sim.mjs",
+    "seed": "node scripts/seed.mjs",
+    "fleet": "node scripts/fleet-sim.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
