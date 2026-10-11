@@ -52,6 +52,41 @@ export function interp(a, b, t) {
   return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
 }
 
+// ── OSRM street routing ───────────────────────────────────────────────
+// Returns a street-following polyline [{lat,lng},...] between two points, or
+// null when the router is unreachable/rate-limited (caller falls back to a
+// straight line). Calls are serialized with a minimum gap so the public demo
+// server (router.project-osrm.org) isn't hammered when a whole fleet needs a
+// fresh route on the same tick.
+let _osrmAt = 0;
+let _osrmChain = Promise.resolve();
+
+async function _osrmFetch(from, to) {
+  const url =
+    'https://router.project-osrm.org/route/v1/driving/' +
+    `${from.lng},${from.lat};${to.lng},${to.lat}` +
+    '?overview=full&geometries=geojson';
+  try {
+    const wait = Math.max(0, 400 - (Date.now() - _osrmAt));
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    _osrmAt = Date.now();
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const coords = json?.routes?.[0]?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+    return coords.map(([lng, lat]) => ({ lat, lng }));
+  } catch {
+    return null;
+  }
+}
+
+export function osrmRoute(from, to) {
+  const run = _osrmChain.then(() => _osrmFetch(from, to));
+  _osrmChain = run.catch(() => {});
+  return run;
+}
+
 // Advances distKm along route; mutates state {i, t} (segment index + km into it).
 export function advance(route, state, distKm) {
   for (let guard = 0; guard < 1000; guard++) {
@@ -158,7 +193,7 @@ if (isMain) {
     }
     if (key === lastKey && route) return;
     const start = await currentPos(amb.id, amb.base);
-    route = target ? [start, target] : [start, start];
+    route = target ? (await osrmRoute(start, target)) ?? [start, target] : [start, start];
     state = { i: 0, t: 0 };
     lastKey = key;
   }

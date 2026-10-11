@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getFirestore } from 'firebase-admin/firestore';
-import { advance, currentPos, targetFor, ACTIVE } from './gps-sim.mjs';
+import { advance, currentPos, targetFor, osrmRoute, ACTIVE } from './gps-sim.mjs';
 
 // gps-sim.mjs already initializes the default app when imported; only init
 // when running this file without that side effect (defensive).
@@ -161,7 +161,10 @@ async function tick(fleet, scale) {
     const distKm = (speedKmh / 3600) * (TICK_MS / 1000);
 
     if (!entry.route) {
-      entry.route = [entry.pos, entry.target];
+      // Route along real streets via OSRM; fall back to a straight line if the
+      // router is unreachable so the sim keeps moving either way.
+      entry.route =
+        (await osrmRoute(entry.pos, entry.target)) ?? [entry.pos, entry.target];
       entry.state = { i: 0, t: 0 };
     }
     const res = distKm > 0
