@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -67,12 +70,36 @@ class _HomeShellState extends State<HomeShell> {
   bool _loading = true;
   int _index = 0;
 
+  /// Dev-only override: switches the active vehicle without re-login.
+  String? _devOverrideId;
+  String? _devOverridePlate;
+  List<Map<String, String>> _fleet = const [];
+  StreamSubscription<List<Map<String, String>>>? _fleetSub;
+
   static const _titles = ['Operations', 'Mission', 'Account'];
+
+  bool get _devSwitcher => kDebugMode;
+
+  /// Vehicle the UI currently shows (dev override wins over account vehicle).
+  String? get _activeId => _devOverrideId ?? _ambulanceId;
+
+  String get _activePlate => _devOverridePlate ?? _plate;
 
   @override
   void initState() {
     super.initState();
     _load();
+    if (_devSwitcher) {
+      _fleetSub = _service.watchAllAmbulances().listen((fleet) {
+        if (mounted) setState(() => _fleet = fleet);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _fleetSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -86,9 +113,59 @@ class _HomeShellState extends State<HomeShell> {
       setState(() {
         _ambulanceId = id;
         _plate = plate;
+        if (_devSwitcher && id != null && _devOverrideId == null) {
+          _devOverrideId = id;
+          _devOverridePlate = plate;
+        }
         _loading = false;
       });
     }
+  }
+
+  void _selectVehicle(Map<String, String> entry) {
+    setState(() {
+      _devOverrideId = entry['id'];
+      _devOverridePlate = entry['plate'];
+      _index = 0;
+    });
+  }
+
+  Widget _devSwitcherButton() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.local_hospital),
+      tooltip: 'DEV: switch vehicle',
+      onSelected: (id) {
+        final entry = _fleet.firstWhere((e) => e['id'] == id,
+            orElse: () => <String, String>{});
+        if (entry.isNotEmpty) _selectVehicle(entry);
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem<String>(
+          enabled: false,
+          child: Text('DEV — switch vehicle',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        ..._fleet.map((e) => PopupMenuItem<String>(
+              value: e['id'],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.circle,
+                      size: 10,
+                      color: e['status'] == 'active'
+                          ? Colors.green
+                          : Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(e['plate'] ?? ''),
+                  if (e['id'] == _activeId) ...[
+                    const SizedBox(width: 8),
+                    const Icon(Icons.check, size: 16),
+                  ],
+                ],
+              ),
+            )),
+      ],
+    );
   }
 
   @override
@@ -96,8 +173,14 @@ class _HomeShellState extends State<HomeShell> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (_ambulanceId == null) {
+    final activeId = _activeId;
+    if (activeId == null) {
+      // No vehicle linked: release builds stop here; dev builds still get the
+      // switcher in the app bar so a vehicle can be picked.
       return Scaffold(
+        appBar: _devSwitcher && _fleet.isNotEmpty
+            ? AppBar(actions: [_devSwitcherButton()])
+            : null,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -112,16 +195,23 @@ class _HomeShellState extends State<HomeShell> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_index])),
+      appBar: AppBar(
+        title: Text(_titles[_index]),
+        actions: [
+          if (_devSwitcher && _fleet.isNotEmpty) _devSwitcherButton(),
+        ],
+      ),
       body: IndexedStack(
         index: _index,
         children: [
-          OpsScreen(ambulanceId: _ambulanceId!),
-          MissionScreen(ambulanceId: _ambulanceId!),
+          OpsScreen(key: ValueKey(activeId), ambulanceId: activeId),
+          MissionScreen(key: ValueKey(activeId), ambulanceId: activeId),
           AccountScreen(
+            key: ValueKey(activeId),
             user: widget.user,
-            ambulanceId: _ambulanceId!,
-            plate: _plate,
+            ambulanceId: activeId,
+            plate: _activePlate,
+            devOverride: _devSwitcher && _devOverrideId != _ambulanceId,
           ),
         ],
       ),

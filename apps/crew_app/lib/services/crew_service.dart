@@ -53,6 +53,20 @@ class CrewService {
     return snap.data();
   }
 
+  /// All ambulances ordered by plate — used by the dev switcher.
+  Stream<List<Map<String, String>>> watchAllAmbulances() => _db
+      .collection('ambulances')
+      .orderBy('plate')
+      .snapshots()
+      .map((snap) => snap.docs.map((d) {
+            final v = d.data();
+            return {
+              'id': d.id,
+              'plate': v['plate'] as String? ?? d.id,
+              'status': v['status'] as String? ?? '',
+            };
+          }).toList());
+
   Future<void> accept(String missionId) => _update(missionId, {
         'status': 'accepted',
         'timeline.accepted': FieldValue.serverTimestamp(),
