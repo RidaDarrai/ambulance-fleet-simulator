@@ -1,7 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
 import 'core/mission_status.dart';
+import 'firebase_options.dart';
 import 'screens/fleet_screen.dart';
 import 'screens/mission_screen.dart';
 import 'screens/missions_screen.dart';
@@ -11,7 +14,33 @@ import 'theme/app_theme.dart';
 import 'widgets/atoms.dart';
 import 'widgets/permission_primer.dart';
 
-void main() => runApp(const PatientApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Firebase is OPTIONAL at boot. If init fails (offline, unsupported
+  // platform, bad config) the app still runs in demo mode — the repository
+  // seam means no screen touches Firebase until a FirebaseRepository is
+  // installed via AppState.useRepository().
+  try {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+    // Groundwork for the Phase-9 FCM auto-open deep link (IA §3.6): the
+    // background isolate handler. Foreground auto-open is driven by
+    // AppShell's listener on the active incident reaching `dispatched`.
+    FirebaseMessaging.onBackgroundMessage(_fcmBackgroundHandler);
+  } catch (e) {
+    debugPrint('Firebase unavailable — staying in demo mode: $e');
+  }
+
+  runApp(const PatientApp());
+}
+
+@pragma('vm:entry-point')
+Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
+  // Data messages are surfaced by AppShell when the app is foregrounded;
+  // nothing to do in the pure background isolate yet (wired in Phase 9).
+  debugPrint('FCM background message: ${message.messageId}');
+}
 
 class PatientApp extends StatefulWidget {
   const PatientApp({super.key});
