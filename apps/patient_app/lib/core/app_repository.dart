@@ -22,6 +22,12 @@ abstract class AppRepository extends ChangeNotifier {
   MedicalProfile get medicalProfile;
   LatLng get userLocation;
 
+  /// Live street-level route for the active mission (unit → its current
+  /// target), fetched from OSRM when available. Screens draw this polyline
+  /// instead of a straight line; `null` falls back to a straight unit→target
+  /// line (demo mode, offline, or while a route is loading).
+  List<LatLng>? get activeRoute;
+
   // ── Auth ────────────────────────────────────────────────────────────
   bool get isAuthenticated;
 

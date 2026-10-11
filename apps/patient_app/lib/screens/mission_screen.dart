@@ -123,6 +123,7 @@ class _MissionScreenState extends State<MissionScreen> {
             unit: unit,
             offline: state.offline,
             showMyPin: state.locationGranted,
+            route: state.activeRoute,
           ),
           // Status band: full-width, status color + icon + word (spec §7).
           _StatusBand(inc: inc, unit: unit, offline: state.offline),
@@ -415,6 +416,7 @@ class _MissionMap extends StatelessWidget {
   final AmbulanceUnit? unit;
   final bool offline;
   final bool showMyPin;
+  final List<LatLng>? route; // OSRM street route (null → straight line)
 
   const _MissionMap({
     required this.map,
@@ -422,6 +424,7 @@ class _MissionMap extends StatelessWidget {
     required this.unit,
     required this.offline,
     required this.showMyPin,
+    this.route,
   });
 
   @override
@@ -501,7 +504,7 @@ class _MissionMap extends StatelessWidget {
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: [unit!.position, routeTarget],
+                    points: route ?? [unit!.position, routeTarget],
                     strokeWidth: 6,
                     color: color,
                   ),

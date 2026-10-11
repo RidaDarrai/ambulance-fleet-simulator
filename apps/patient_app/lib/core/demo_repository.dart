@@ -27,6 +27,10 @@ class DemoRepository extends AppRepository {
   @override
   LatLng userLocation = kUserLocation;
 
+  /// Demo draws a straight unit→target line (no real routing).
+  @override
+  List<LatLng>? activeRoute;
+
   @override
   bool isAuthenticated = false;
   @override

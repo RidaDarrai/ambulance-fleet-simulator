@@ -184,7 +184,8 @@ class _FleetMap extends StatelessWidget {
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: [assigned.position, _routeTarget(inc)],
+                    points: state.activeRoute ??
+                        [assigned.position, _routeTarget(inc)],
                     strokeWidth: 5,
                     color: context.statusColor(inc.status),
                   ),

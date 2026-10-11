@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'app_repository.dart';
 import 'mission_status.dart';
 import 'models.dart';
+import '../services/routing_service.dart';
 
 /// Real data source backed by Firestore / Auth / RTDB.
 ///
@@ -44,6 +45,8 @@ class FirebaseRepository extends AppRepository {
   MedicalProfile medicalProfile = MedicalProfile();
   @override
   LatLng userLocation = kUserLocation;
+  @override
+  List<LatLng>? get activeRoute => _activeRouteStore;
 
   @override
   bool isAuthenticated = false;
@@ -74,6 +77,11 @@ class FirebaseRepository extends AppRepository {
   String? _activeMissionId; // Firestore doc we're currently streaming
   String? _lastGuestName; // remembered so a retry keeps guest callback
   String? _lastGuestPhone;
+  final RoutingService _routing = RoutingService();
+  List<LatLng>? _activeRouteStore; // OSRM route for the active mission
+  LatLng? _routeStart; // unit position the current route was built from
+  MissionStatus? _routeStatus; // status the current route was built for
+  bool _routingInFlight = false;
   final Map<String, AmbulanceUnit> _fleetDocs = {}; // ambulanceId -> unit (base)
   final Map<String, LatLng> _positions = {}; // ambulanceId -> live position
   StreamSubscription<User?>? _authSub;
@@ -196,6 +204,7 @@ class FirebaseRepository extends AppRepository {
     fleetError = false;
     lastFleetUpdate = DateTime.now();
     notifyListeners();
+    _refreshRoute(); // unit moved → re-route along streets when needed
   }
 
   @override
@@ -322,7 +331,9 @@ class FirebaseRepository extends AppRepository {
     if (status == MissionStatus.resolved && !history.any((h) => h.id == incident.id)) {
       history.insert(0, incident);
     }
+    if (status == MissionStatus.resolved) _activeRouteStore = null;
     notifyListeners();
+    _refreshRoute();
   }
 
   int _estimateEta(Incident inc, MissionStatus status) {
@@ -335,6 +346,46 @@ class FirebaseRepository extends AppRepository {
         : inc.pickup;
     final km = const Distance().as(LengthUnit.Kilometer, unitPos, target);
     return (km / 40 * 3600).round(); // 40 km/h interim assumption
+  }
+
+  /// Fetches (or refreshes) the OSRM street route for the active mission.
+  /// Re-fetches only when the status/target changed or the assigned unit has
+  /// moved meaningfully (~120 m) since the last fetch, so it doesn't hammer
+  /// the routing server on every position tick. Falls back to a straight
+  /// line (null) when there's no unit, no position, or the mission is done.
+  Future<void> _refreshRoute() async {
+    final inc = activeIncident;
+    if (inc == null ||
+        inc.unitId == null ||
+        inc.status == MissionStatus.resolved ||
+        inc.status == MissionStatus.onScene) {
+      _activeRouteStore = null;
+      return;
+    }
+    final unitPos = _positions[inc.unitId!];
+    if (unitPos == null) {
+      _activeRouteStore = null;
+      return;
+    }
+    final target = (inc.status == MissionStatus.transporting ||
+            inc.status == MissionStatus.atHospital)
+        ? inc.hospital
+        : inc.pickup;
+    final moved = _routeStart == null ||
+        const Distance().as(LengthUnit.Meter, _routeStart!, unitPos) > 120;
+    final statusChanged = _routeStatus != inc.status;
+    if (!moved && !statusChanged && _activeRouteStore != null) return;
+    if (_routingInFlight) return;
+    _routingInFlight = true;
+    try {
+      final r = await _routing.route(unitPos, target);
+      _activeRouteStore = r.points.length >= 2 ? r.points : null;
+      _routeStart = unitPos;
+      _routeStatus = inc.status;
+      notifyListeners();
+    } finally {
+      _routingInFlight = false;
+    }
   }
 
   static const Map<String, MissionStatus> _timelineKeys = {
@@ -386,6 +437,7 @@ class FirebaseRepository extends AppRepository {
     _missionSub?.cancel();
     _missionSub = null;
     sendFailed = false;
+    _activeRouteStore = null;
     notifyListeners();
     if (id != null) {
       // Patients currently lack a direct update grant for status, so this
@@ -406,6 +458,7 @@ class FirebaseRepository extends AppRepository {
     _missionSub?.cancel();
     _missionSub = null;
     activeIncident = null;
+    _activeRouteStore = null;
     notifyListeners();
   }
 

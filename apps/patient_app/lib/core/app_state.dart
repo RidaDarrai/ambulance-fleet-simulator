@@ -54,6 +54,7 @@ class AppState extends ChangeNotifier {
   Incident? get activeIncident => _repo.activeIncident;
   MedicalProfile get medicalProfile => _repo.medicalProfile;
   LatLng get userLocation => _repo.userLocation;
+  List<LatLng>? get activeRoute => _repo.activeRoute;
 
   bool get isAuthenticated => _repo.isAuthenticated;
 
