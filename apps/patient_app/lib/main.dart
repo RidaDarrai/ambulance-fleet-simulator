@@ -119,6 +119,11 @@ class _AppShellState extends State<AppShell> {
     );
     if (!mounted) return;
     _state.completeLocationPrimer(granted: granted ?? false);
+    if (granted == true) {
+      // Primer already explained *why*; now show the OS/browser prompt and
+      // swap the demo pin for the real device position.
+      await _state.useMyLocation();
+    }
   }
 
   @override

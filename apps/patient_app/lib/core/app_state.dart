@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'app_repository.dart';
@@ -151,6 +152,38 @@ class AppState extends ChangeNotifier {
   void setLocationGranted(bool value) {
     locationGranted = value;
     notifyListeners();
+  }
+
+  /// Requests the OS/browser location permission (the primer has already
+  /// explained *why* before this point) and, if granted, replaces the demo
+  /// pin with the real device position. Returns whether we ended up with a
+  /// real fix; on denial the pin stays wherever it was (manual long-press
+  /// still works) and the UI's permission-denied states kick in.
+  Future<bool> useMyLocation() async {
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        locationGranted = false;
+        notifyListeners();
+        return false;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high),
+      );
+      locationGranted = true;
+      _repo.setUserLocation(LatLng(pos.latitude, pos.longitude));
+      return true;
+    } catch (_) {
+      // Web user dismissed the browser prompt, or location services off.
+      locationGranted = false;
+      notifyListeners();
+      return false;
+    }
   }
 
   void setReduceMotion(bool value) {
