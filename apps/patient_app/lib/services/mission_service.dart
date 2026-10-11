@@ -16,7 +16,9 @@ class MissionService {
       'location': {'lat': lat, 'lng': lng},
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'timeline.requested': FieldValue.serverTimestamp(),
+      // Nested map (not a flat 'timeline.requested' key) so the timestamp lands
+      // in the `timeline` sub-map that dispatch/crew `update()` writes into.
+      'timeline': {'requested': FieldValue.serverTimestamp()},
     });
     return doc.id;
   }

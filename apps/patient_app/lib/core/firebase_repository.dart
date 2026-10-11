@@ -256,7 +256,10 @@ class FirebaseRepository extends AppRepository {
         'location': {'lat': point.latitude, 'lng': point.longitude},
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'timeline.requested': FieldValue.serverTimestamp(),
+        // Nested map, NOT a flat 'timeline.requested' key: `.add()` treats dots
+        // as literal characters, so a flat key would never land in the `timeline`
+        // map the dispatcher/crew `update()` writes (and this adapter reads).
+        'timeline': {'requested': FieldValue.serverTimestamp()},
       });
       _watchMission(doc.id);
     } catch (_) {
