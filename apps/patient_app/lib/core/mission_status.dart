@@ -53,3 +53,22 @@ extension MissionStatusBuildContextX on BuildContext {
           ? status.dark()
           : status.light();
 }
+
+/// Folds the backend's mission statuses onto the design's locked 7.
+///
+/// The backend (dispatcher/crew) uses `requested`, `assigned`, `accepted`,
+/// `enRoute`, `onScene`, `transporting`, `atHospital`, `resolved` — 8 states.
+/// The design locks 7 and asserts there are exactly 7. `assigned` and
+/// `accepted` are both dispatch-phase from the patient's view, so they fold to
+/// `dispatched`; `requested` maps to the design's `pending`. Anything unknown
+/// degrades to `pending` rather than crashing (handoff §3).
+MissionStatus mapBackendStatus(String s) => switch (s) {
+      'requested' => MissionStatus.pending,
+      'assigned' || 'accepted' => MissionStatus.dispatched,
+      'enRoute' => MissionStatus.enRoute,
+      'onScene' => MissionStatus.onScene,
+      'transporting' => MissionStatus.transporting,
+      'atHospital' => MissionStatus.atHospital,
+      'resolved' => MissionStatus.resolved,
+      _ => MissionStatus.pending,
+    };

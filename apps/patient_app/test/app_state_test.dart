@@ -76,4 +76,34 @@ void main() {
       expect(state.isDemo, isTrue);
     });
   });
+
+  group('backend status → design status (8 → 7 fold)', () {
+    test('the 8 backend statuses all land on one of the locked 7', () {
+      const backend = [
+        'requested',
+        'assigned',
+        'accepted',
+        'enRoute',
+        'onScene',
+        'transporting',
+        'atHospital',
+        'resolved',
+      ];
+      final mapped = backend.map(mapBackendStatus).toSet();
+
+      // All results are valid design statuses…
+      expect(mapped.every((s) => MissionStatus.values.contains(s)), isTrue);
+      // …and the two dispatch-phase backend states collapse to one.
+      expect(mapBackendStatus('assigned'), MissionStatus.dispatched);
+      expect(mapBackendStatus('accepted'), MissionStatus.dispatched);
+      expect(mapBackendStatus('requested'), MissionStatus.pending);
+      // 8 backend → 7 design (assigned + accepted share `dispatched`).
+      expect(mapped.length, 7);
+    });
+
+    test('unknown status degrades to pending instead of throwing', () {
+      expect(mapBackendStatus('weird-new-state'), MissionStatus.pending);
+      expect(mapBackendStatus(''), MissionStatus.pending);
+    });
+  });
 }
