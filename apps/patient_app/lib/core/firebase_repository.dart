@@ -86,6 +86,7 @@ class FirebaseRepository extends AppRepository {
   Duration? _routeDuration; // OSRM routed drive time to the current target
   DateTime? _routeFetchedAt; // when _routeDuration was captured (for ticking)
   bool _routingInFlight = false;
+  final Map<String, LatLng> _hospitalCache = {}; // hospitalId → location
   final Map<String, AmbulanceUnit> _fleetDocs = {}; // ambulanceId -> unit (base)
   final Map<String, LatLng> _positions = {}; // ambulanceId -> live position
   StreamSubscription<User?>? _authSub;
@@ -455,12 +456,16 @@ class FirebaseRepository extends AppRepository {
 
   Future<LatLng> _resolveHospital(String? hospitalId) async {
     if (hospitalId == null) return kHospital;
+    final cached = _hospitalCache[hospitalId];
+    if (cached != null) return cached;
     try {
       final snap = await _db.collection('hospitals').doc(hospitalId).get();
       final loc = snap.data()?['location'];
       if (loc is Map && loc['lat'] is num && loc['lng'] is num) {
-        return LatLng((loc['lat'] as num).toDouble(),
-            (loc['lng'] as num).toDouble());
+        final point = LatLng(
+            (loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
+        _hospitalCache[hospitalId] = point;
+        return point;
       }
     } catch (_) {}
     return kHospital;
@@ -521,8 +526,8 @@ class FirebaseRepository extends AppRepository {
         .where('status', isEqualTo: 'resolved')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .listen((snap) {
-      history = snap.docs.map((d) {
+        .listen((snap) async {
+      history = await Future.wait(snap.docs.map((d) async {
         final data = d.data();
         final loc = data['location'];
         final pickup =
@@ -533,7 +538,7 @@ class FirebaseRepository extends AppRepository {
         final inc = Incident(
           id: d.id,
           pickup: pickup,
-          hospital: kHospital,
+          hospital: await _resolveHospital(data['hospitalId'] as String?),
           createdAt: _ts(data['createdAt']) ?? DateTime.now(),
           status: MissionStatus.resolved,
           medicalAttached: (data['medicalAttached'] as bool?) ?? false,
@@ -541,7 +546,7 @@ class FirebaseRepository extends AppRepository {
         );
         _applyTimeline(inc, data['timeline']);
         return inc;
-      }).toList();
+      }));
       notifyListeners();
     }, onError: (_) {});
   }
