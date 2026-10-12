@@ -83,6 +83,8 @@ class FirebaseRepository extends AppRepository {
   List<LatLng>? _activeRouteStore; // OSRM route for the active mission
   LatLng? _routeStart; // unit position the current route was built from
   MissionStatus? _routeStatus; // status the current route was built for
+  Duration? _routeDuration; // OSRM routed drive time to the current target
+  DateTime? _routeFetchedAt; // when _routeDuration was captured (for ticking)
   bool _routingInFlight = false;
   final Map<String, AmbulanceUnit> _fleetDocs = {}; // ambulanceId -> unit (base)
   final Map<String, LatLng> _positions = {}; // ambulanceId -> live position
@@ -205,6 +207,7 @@ class FirebaseRepository extends AppRepository {
     fleetLoading = false;
     fleetError = false;
     lastFleetUpdate = DateTime.now();
+    _tickEta(); // live routed-ETA countdown between re-fetches
     notifyListeners();
     _refreshRoute(); // unit moved → re-route along streets when needed
   }
@@ -330,6 +333,7 @@ class FirebaseRepository extends AppRepository {
     incident.etaSeconds = _estimateEta(incident, status);
 
     activeIncident = incident;
+    _applyRoutedEta(); // prefer the OSRM routed ETA over the straight-line guess
     if (status == MissionStatus.resolved && !history.any((h) => h.id == incident.id)) {
       history.insert(0, incident);
     }
@@ -350,6 +354,38 @@ class FirebaseRepository extends AppRepository {
     return (km / 40 * 3600).round(); // 40 km/h interim assumption
   }
 
+  /// Overwrites the interim straight-line ETA with the OSRM routed drive time
+  /// for the current target (Phase 6). No-op until a route for the current
+  /// status is fetched, or once the mission is on-scene/resolved.
+  void _applyRoutedEta() {
+    final inc = activeIncident;
+    final dur = _routeDuration;
+    if (inc == null || dur == null) return;
+    if (_routeStatus != inc.status) return; // cached route targets another leg
+    if (inc.status == MissionStatus.resolved ||
+        inc.status == MissionStatus.onScene) {
+      return;
+    }
+    inc.etaSeconds = dur.inSeconds;
+  }
+
+  /// Ticks the routed ETA down in real time between re-fetches, using the time
+  /// elapsed since the route was captured. Called on each fleet position update.
+  void _tickEta() {
+    final inc = activeIncident;
+    final dur = _routeDuration;
+    final at = _routeFetchedAt;
+    if (inc == null || dur == null || at == null) return;
+    if (_routeStatus != inc.status) return;
+    if (inc.status == MissionStatus.resolved ||
+        inc.status == MissionStatus.onScene) {
+      return;
+    }
+    final elapsed = DateTime.now().difference(at).inSeconds;
+    final remaining = dur.inSeconds - elapsed;
+    inc.etaSeconds = remaining < 0 ? 0 : remaining;
+  }
+
   /// Fetches (or refreshes) the OSRM street route for the active mission.
   /// Re-fetches only when the status/target changed or the assigned unit has
   /// moved meaningfully (~120 m) since the last fetch, so it doesn't hammer
@@ -362,11 +398,15 @@ class FirebaseRepository extends AppRepository {
         inc.status == MissionStatus.resolved ||
         inc.status == MissionStatus.onScene) {
       _activeRouteStore = null;
+      _routeDuration = null;
+      _routeFetchedAt = null;
       return;
     }
     final unitPos = _positions[inc.unitId!];
     if (unitPos == null) {
       _activeRouteStore = null;
+      _routeDuration = null;
+      _routeFetchedAt = null;
       return;
     }
     final target = (inc.status == MissionStatus.transporting ||
@@ -384,6 +424,9 @@ class FirebaseRepository extends AppRepository {
       _activeRouteStore = r.points.length >= 2 ? r.points : null;
       _routeStart = unitPos;
       _routeStatus = inc.status;
+      _routeDuration = r.duration; // real routed drive time (Phase 6 ETA)
+      _routeFetchedAt = DateTime.now();
+      _applyRoutedEta();
       notifyListeners();
     } finally {
       _routingInFlight = false;
