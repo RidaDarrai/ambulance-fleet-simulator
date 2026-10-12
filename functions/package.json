@@ -1,0 +1,18 @@
+{
+  "name": "ambulance-functions",
+  "description": "Server-side dispatch logic for the ambulance tracking system (Phase 9)",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.0.1"
+  }
+}
