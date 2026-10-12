@@ -78,6 +78,14 @@ abstract class AppRepository extends ChangeNotifier {
   bool removeContact(EmergencyContact contact);
   void resetMedicalProfile();
 
+  // ── Crew chat (subcollection `missions/{id}/messages`) ──────────────
+  /// Live message thread for a mission. Demo returns an in-memory thread;
+  /// Firebase streams the Firestore subcollection.
+  Stream<List<ChatMessage>> watchChat(String missionId);
+
+  /// Send a patient message onto the mission thread.
+  Future<void> sendChat(String missionId, String text);
+
   // ── Demo error-simulation setters ───────────────────────────────────
   void setSimulateSubmitError(bool value);
   void setSimulateSaveError(bool value);

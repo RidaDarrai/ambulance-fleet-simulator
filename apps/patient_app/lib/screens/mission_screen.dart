@@ -971,12 +971,90 @@ void showCommsSheet(BuildContext context, AppState state,
               label: const Text('Open chat instead'),
             ),
           ] else ...[
-            const _MockChat(),
+            _ChatPanel(state: state),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+/// Live crew-chat thread + composer for the active mission. Streams the
+/// mission's messages through [AppState] (in-memory demo or Firestore live)
+/// and sends patient messages back onto the thread.
+class _ChatPanel extends StatefulWidget {
+  final AppState state;
+  const _ChatPanel({required this.state});
+
+  @override
+  State<_ChatPanel> createState() => _ChatPanelState();
+}
+
+class _ChatPanelState extends State<_ChatPanel> {
+  final TextEditingController _ctl = TextEditingController();
+  Stream<List<ChatMessage>>? _thread;
+  String? _threadId;
+
+  String? get _missionId => widget.state.activeIncident?.id;
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  /// Cache the stream per mission so rebuilds don't resubscribe.
+  Stream<List<ChatMessage>> _messages(String id) {
+    if (_thread == null || _threadId != id) {
+      _threadId = id;
+      _thread = widget.state.watchChat(id);
+    }
+    return _thread!;
+  }
+
+  Future<void> _send() async {
+    final id = _missionId;
+    final text = _ctl.text;
+    if (id == null || text.trim().isEmpty) return;
+    _ctl.clear();
+    await widget.state.sendChat(id, text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final id = _missionId;
+    if (id == null) {
+      return Text('No active mission to chat about.',
+          style: theme.textTheme.bodySmall);
+    }
+    return StreamBuilder<List<ChatMessage>>(
+      stream: _messages(id),
+      builder: (context, snap) {
+        final messages = snap.data ?? const <ChatMessage>[];
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: messages.isEmpty
+                  ? Text('No messages yet.', style: theme.textTheme.bodySmall)
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      reverse: true, // newest at the bottom, by the composer
+                      itemCount: messages.length,
+                      itemBuilder: (_, i) => _bubble(theme, messages[i]),
+                    ),
+            ),
             gapH(12),
             Row(
               children: [
                 Expanded(
                   child: TextField(
+                    controller: _ctl,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
                     decoration: const InputDecoration(
                       hintText: 'Message the crew…',
                       border: OutlineInputBorder(),
@@ -986,35 +1064,19 @@ void showCommsSheet(BuildContext context, AppState state,
                 ),
                 gapW(8),
                 IconButton.filled(
-                  onPressed: () {},
+                  onPressed: _send,
                   icon: const Icon(Icons.send_rounded, size: 18),
                 ),
               ],
             ),
           ],
-        ],
-      ),
-    ),
-  );
-}
-
-class _MockChat extends StatelessWidget {
-  const _MockChat();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _bubble(theme, 'We received your request. ETA updated.', true),
-        gapH(6),
-        _bubble(theme, 'Please hurry.', false),
-      ],
+        );
+      },
     );
   }
 
-  Widget _bubble(ThemeData theme, String text, bool incoming) {
+  Widget _bubble(ThemeData theme, ChatMessage m) {
+    final incoming = !m.fromMe;
     return Align(
       alignment: incoming ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
@@ -1026,7 +1088,7 @@ class _MockChat extends StatelessWidget {
               : theme.colorScheme.primary,
           borderRadius: BorderRadius.circular(AppColors.radiusMd),
         ),
-        child: Text(text,
+        child: Text(m.text,
             style: theme.textTheme.bodySmall?.copyWith(
               color: incoming ? null : AppColors.primaryForeground,
             )),

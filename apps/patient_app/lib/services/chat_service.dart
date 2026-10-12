@@ -1,21 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-class ChatMessage {
-  const ChatMessage({
-    required this.id,
-    required this.text,
-    required this.senderRole,
-    required this.at,
-  });
+import '../core/models.dart';
 
-  final String id;
-  final String text;
-  final String senderRole;
-  final DateTime at;
-
-  bool get fromMe => senderRole == 'patient';
-}
+export '../core/models.dart' show ChatMessage;
 
 class ChatService {
   CollectionReference<Map<String, dynamic>> _thread(String missionId) =>

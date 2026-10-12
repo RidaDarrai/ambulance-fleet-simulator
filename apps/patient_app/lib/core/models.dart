@@ -128,3 +128,22 @@ class Incident {
     statusTimes[status] = createdAt;
   }
 }
+
+/// A single crew-chat message on a mission thread
+/// (`missions/{id}/messages`). Deliberately Firestore-free so the in-memory
+/// demo repo and the Firebase repo can share the same type.
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.text,
+    required this.senderRole,
+    required this.at,
+  });
+
+  final String id;
+  final String text;
+  final String senderRole; // 'patient' | 'crew' | 'dispatcher'
+  final DateTime at;
+
+  bool get fromMe => senderRole == 'patient';
+}

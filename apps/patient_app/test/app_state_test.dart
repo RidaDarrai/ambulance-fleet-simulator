@@ -106,4 +106,43 @@ void main() {
       expect(mapBackendStatus(''), MissionStatus.pending);
     });
   });
+
+  group('crew chat seam', () {
+    test('demo watchChat seeds a thread and sendChat appends', () async {
+      final state = AppState();
+      addTearDown(state.dispose);
+
+      final emissions = <List<ChatMessage>>[];
+      final sub = state.watchChat('m1').listen(emissions.add);
+      // Let the async* generator emit the seeded snapshot.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(emissions, hasLength(1));
+      expect(emissions.first, hasLength(2)); // seeded crew + patient
+      expect(emissions.first.first.fromMe, isFalse); // crew message first
+
+      await state.sendChat('m1', 'On my way!');
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(emissions.last, hasLength(3));
+      expect(emissions.last.last.text, 'On my way!');
+      expect(emissions.last.last.fromMe, isTrue); // patient sent it
+
+      await sub.cancel();
+    });
+
+    test('threads are isolated per mission', () async {
+      final state = AppState();
+      addTearDown(state.dispose);
+
+      await state.sendChat('m2', 'only on m2');
+
+      final m1 = await state.watchChat('m1').first;
+      final m2 = await state.watchChat('m2').first;
+      expect(m1.any((m) => m.text == 'only on m2'), isFalse);
+      expect(m2.any((m) => m.text == 'only on m2'), isTrue);
+    });
+  });
 }

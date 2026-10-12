@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'app_repository.dart';
 import 'mission_status.dart';
 import 'models.dart';
+import '../services/chat_service.dart';
 import '../services/routing_service.dart';
 
 /// Real data source backed by Firestore / Auth / RTDB.
@@ -78,6 +79,7 @@ class FirebaseRepository extends AppRepository {
   String? _lastGuestName; // remembered so a retry keeps guest callback
   String? _lastGuestPhone;
   final RoutingService _routing = RoutingService();
+  final ChatService _chat = ChatService();
   List<LatLng>? _activeRouteStore; // OSRM route for the active mission
   LatLng? _routeStart; // unit position the current route was built from
   MissionStatus? _routeStatus; // status the current route was built for
@@ -625,6 +627,15 @@ class FirebaseRepository extends AppRepository {
     _persistMedical();
     notifyListeners();
   }
+
+  // ── Crew chat ───────────────────────────────────────────────────────
+  @override
+  Stream<List<ChatMessage>> watchChat(String missionId) =>
+      _chat.watch(missionId);
+
+  @override
+  Future<void> sendChat(String missionId, String text) =>
+      _chat.send(missionId, text);
 
   @override
   void dispose() {

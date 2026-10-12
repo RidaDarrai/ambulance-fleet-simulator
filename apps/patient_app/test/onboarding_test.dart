@@ -80,6 +80,11 @@ class _FakeRepo extends ChangeNotifier implements AppRepository {
   @override
   void resetMedicalProfile() {}
   @override
+  Stream<List<ChatMessage>> watchChat(String missionId) =>
+      Stream.value(const []);
+  @override
+  Future<void> sendChat(String missionId, String text) async {}
+  @override
   void setSimulateSubmitError(bool value) {}
   @override
   void setSimulateSaveError(bool value) {}

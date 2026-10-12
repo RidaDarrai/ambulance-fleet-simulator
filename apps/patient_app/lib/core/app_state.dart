@@ -104,6 +104,12 @@ class AppState extends ChangeNotifier {
       _repo.removeContact(contact);
   void resetMedicalProfile() => _repo.resetMedicalProfile();
 
+  // ── Crew chat ───────────────────────────────────────────────────────
+  Stream<List<ChatMessage>> watchChat(String missionId) =>
+      _repo.watchChat(missionId);
+  Future<void> sendChat(String missionId, String text) =>
+      _repo.sendChat(missionId, text);
+
   // ── App preferences (not repository concerns) ───────────────────────
   bool onboardingDone = false;
   bool reduceMotion = false;

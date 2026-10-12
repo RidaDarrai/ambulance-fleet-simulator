@@ -58,6 +58,10 @@ class DemoRepository extends AppRepository {
   @override
   bool lastRequestMedical = false;
 
+  // ── Crew chat (in-memory, per mission) ──────────────────────────────
+  final Map<String, List<ChatMessage>> _threads = {};
+  final Map<String, StreamController<List<ChatMessage>>> _threadCtl = {};
+
   Timer? _ticker;
 
   DemoRepository() : units = _seedUnits() {
@@ -367,9 +371,51 @@ class DemoRepository extends AppRepository {
       LatLng(from.latitude + (to.latitude - from.latitude) * t,
           from.longitude + (to.longitude - from.longitude) * t);
 
+  // ── Crew chat ───────────────────────────────────────────────────────
+  static List<ChatMessage> _seedThread() => [
+        ChatMessage(
+          id: 'seed1',
+          text: 'We received your request. ETA updated.',
+          senderRole: 'crew',
+          at: DateTime.now(),
+        ),
+        ChatMessage(
+          id: 'seed2',
+          text: 'Please hurry.',
+          senderRole: 'patient',
+          at: DateTime.now(),
+        ),
+      ];
+
+  @override
+  Stream<List<ChatMessage>> watchChat(String missionId) async* {
+    final list = _threads.putIfAbsent(missionId, _seedThread);
+    yield List<ChatMessage>.unmodifiable(list);
+    final ctl = _threadCtl.putIfAbsent(
+        missionId, () => StreamController<List<ChatMessage>>.broadcast());
+    yield* ctl.stream;
+  }
+
+  @override
+  Future<void> sendChat(String missionId, String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final list = _threads.putIfAbsent(missionId, _seedThread);
+    list.add(ChatMessage(
+      id: 'd${DateTime.now().microsecondsSinceEpoch}',
+      text: trimmed,
+      senderRole: 'patient',
+      at: DateTime.now(),
+    ));
+    _threadCtl[missionId]?.add(List<ChatMessage>.unmodifiable(list));
+  }
+
   @override
   void dispose() {
     _ticker?.cancel();
+    for (final c in _threadCtl.values) {
+      c.close();
+    }
     super.dispose();
   }
 }
