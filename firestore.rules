@@ -14,6 +14,19 @@ service cloud.firestore {
       return hasRole('dispatcher') || hasRole('admin') || hasRole('crew');
     }
 
+    // Mission visibility: staff, the owning patient, or an unauthenticated
+    // client reading its own unattributed (guest) mission.
+    //
+    // Guest mode has no identity to scope against, so missions with
+    // patientId == null stay world-readable — that is a deliberate tradeoff to
+    // keep guest request + live tracking working. Authenticated patients'
+    // missions are private to them and to staff.
+    function canReadMission(m) {
+      return isStaff()
+        || (isSignedIn() && m.patientId == request.auth.uid)
+        || (!isSignedIn() && m.patientId == null);
+    }
+
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isStaff());
       allow create, update: if isSignedIn() && request.auth.uid == uid;
@@ -26,23 +39,43 @@ service cloud.firestore {
       allow delete: if hasRole('admin');
     }
 
+    // Fleet catalog: world-readable on purpose — the guest Fleet tab + map need
+    // it, and it carries no patient PII. Writes stay staff-gated.
     match /ambulances/{id} {
       allow read: if true;
       allow write: if hasRole('admin') || hasRole('dispatcher');
       allow update: if hasRole('crew');
     }
 
+    // Hospital directory: world-readable on purpose — guests resolve a
+    // destination hospital too. Writes are admin-only.
     match /hospitals/{id} {
       allow read: if true;
       allow write: if hasRole('admin');
     }
 
     match /missions/{id} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if isStaff();
+      allow read: if canReadMission(resource.data);
+
+      // Create: a signed-in patient may only create a mission for themselves;
+      // a guest may only create an unattributed (patientId == null) mission.
+      allow create: if (isSignedIn() && request.resource.data.patientId == request.auth.uid)
+        || (!isSignedIn() && request.resource.data.patientId == null);
+
+      // Update: staff advance the mission, or the owning patient may cancel it
+      // (one-way status -> cancelled, touching only status/updatedAt).
+      // Guests have no cancel grant here — a secure guest-cancel needs a
+      // callable with a server-issued token (not possible in rules alone).
+      allow update: if isStaff()
+        || (isSignedIn()
+            && resource.data.patientId == request.auth.uid
+            && request.resource.data.status == 'cancelled'
+            && resource.data.status != 'cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
+
+      // Chat: only those who can read the parent mission can read/write it.
       match /messages/{msgId} {
-        allow read, write: if true;
+        allow read, write: if canReadMission(get(/databases/$(database)/documents/missions/$(id)).data);
       }
     }
   }
