@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:crew_app/core/app_state.dart';
 import 'package:crew_app/screens/login_screen.dart';
 
 void main() {
   testWidgets('renders crew login', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpWidget(
+        MaterialApp(home: LoginScreen(state: AppState())));
     expect(find.text('Ambulance Crew'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Email'), findsOneWidget);

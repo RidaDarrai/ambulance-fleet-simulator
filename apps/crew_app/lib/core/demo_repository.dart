@@ -27,6 +27,7 @@ class DemoRepository extends CrewRepository {
   String ambulanceId = 'AMB-07';
   @override
   bool sessionExpired = false;
+  @override
   bool simulateLoginError = false;
 
   // ── Duty (§3/§4) ─────────────────────────────────────────────────────

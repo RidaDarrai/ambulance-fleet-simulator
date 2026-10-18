@@ -1,230 +1,183 @@
-import 'dart:async';
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+
+import 'core/app_state.dart';
+import 'core/mission_status.dart';
 import 'firebase_options.dart';
 import 'screens/account_screen.dart';
+import 'screens/history_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/mission_screen.dart';
 import 'screens/ops_screen.dart';
-import 'services/crew_service.dart';
+import 'theme/app_theme.dart';
+import 'widgets/permission_primer.dart';
+
+/// Note: when the crew-side `FirebaseRepository` is built (mirroring
+/// patient_app), gate it behind a `--dart-define=LIVE=true` flag plus a
+/// `Firebase.apps.isNotEmpty` check and pass it to `AppState(repository: …)`.
+/// Until then the app boots on the in-memory demo repository, so UI
+/// walkthroughs need no backend.
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  // Firebase is OPTIONAL at boot. If init fails (offline, unsupported
+  // platform, bad config) the app still runs in demo mode — the repository
+  // seam means no screen touches Firebase until a FirebaseRepository is
+  // installed via AppState.useRepository().
+  try {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    debugPrint('Firebase unavailable — staying in demo mode: $e');
+  }
+
   runApp(const CrewApp());
 }
 
-class CrewApp extends StatelessWidget {
+/// Adaptive breakpoint (IA §0.5): mounted landscape tablets get the rail +
+/// side-panel composition; everything else keeps the phone layout.
+bool isTabletLayout(BuildContext context) {
+  final mq = MediaQuery.of(context);
+  return mq.orientation == Orientation.landscape &&
+      mq.size.shortestSide >= 600;
+}
+
+class CrewApp extends StatefulWidget {
   const CrewApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Ambulance Crew',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
-      home: const RootGate(),
-    );
-  }
+  State<CrewApp> createState() => _CrewAppState();
 }
 
-class RootGate extends StatelessWidget {
-  const RootGate({super.key});
+class _CrewAppState extends State<CrewApp> {
+  // Demo repository by default; `repository:` param is the seam for the
+  // future FirebaseRepository (gated behind LIVE + Firebase.apps check).
+  final _state = AppState();
+
+  @override
+  void dispose() {
+    _state.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: CrewService().authChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        final user = snapshot.data;
-        if (user == null) return const LoginScreen();
-        return HomeShell(user: user);
+    return ListenableBuilder(
+      listenable: _state,
+      builder: (context, _) {
+        // Hybrid rule (approved): calm at rest, dark cockpit from `assigned`
+        // through `atHospital` — driven by mission state, never a setting.
+        final mission = _state.activeMission;
+        final darkMission = mission != null &&
+            mission.status != MissionStatus.resolved;
+        return MaterialApp(
+          title: 'Ambulance Crew',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(brightness: Brightness.light),
+          darkTheme: buildAppTheme(brightness: Brightness.dark),
+          themeMode: darkMission ? ThemeMode.dark : ThemeMode.light,
+          home: _state.isSignedIn
+              ? RootGate(state: _state)
+              : LoginScreen(state: _state),
+        );
       },
     );
   }
 }
 
-class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.user});
-
-  final User user;
+class RootGate extends StatefulWidget {
+  final AppState state;
+  const RootGate({super.key, required this.state});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  State<RootGate> createState() => _RootGateState();
 }
 
-class _HomeShellState extends State<HomeShell> {
-  final _service = CrewService();
-  String? _ambulanceId;
-  String _plate = '';
-  bool _loading = true;
-  int _index = 0;
+class _RootGateState extends State<RootGate> {
+  int _tab = 0; // 0 Ops · 1 History · 2 Account
+  bool _primerShown = false;
 
-  /// Dev-only override: switches the active vehicle without re-login.
-  String? _devOverrideId;
-  String? _devOverridePlate;
-  List<Map<String, String>> _fleet = const [];
-  StreamSubscription<List<Map<String, String>>>? _fleetSub;
-
-  static const _titles = ['Operations', 'Mission', 'Account'];
-
-  bool get _devSwitcher => kDebugMode;
-
-  /// Vehicle the UI currently shows (dev override wins over account vehicle).
-  String? get _activeId => _devOverrideId ?? _ambulanceId;
-
-  String get _activePlate => _devOverridePlate ?? _plate;
+  AppState get state => widget.state;
 
   @override
   void initState() {
     super.initState();
-    _load();
-    if (_devSwitcher) {
-      _fleetSub = _service.watchAllAmbulances().listen((fleet) {
-        if (mounted) setState(() => _fleet = fleet);
-      });
-    }
+    // First-launch location primer (§2) — once, before the deck.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePrimer());
   }
 
-  @override
-  void dispose() {
-    _fleetSub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final id = await _service.myAmbulanceId(widget.user.uid);
-    String plate = '';
-    if (id != null) {
-      final amb = await _service.ambulance(id);
-      plate = amb?['plate'] as String? ?? '';
-    }
-    if (mounted) {
-      setState(() {
-        _ambulanceId = id;
-        _plate = plate;
-        if (_devSwitcher && id != null && _devOverrideId == null) {
-          _devOverrideId = id;
-          _devOverridePlate = plate;
-        }
-        _loading = false;
-      });
-    }
-  }
-
-  void _selectVehicle(Map<String, String> entry) {
-    setState(() {
-      _devOverrideId = entry['id'];
-      _devOverridePlate = entry['plate'];
-      _index = 0;
-    });
-  }
-
-  Widget _devSwitcherButton() {
-    return PopupMenuButton<String>(
-      icon: const Icon(Icons.local_hospital),
-      tooltip: 'DEV: switch vehicle',
-      onSelected: (id) {
-        final entry = _fleet.firstWhere((e) => e['id'] == id,
-            orElse: () => <String, String>{});
-        if (entry.isNotEmpty) _selectVehicle(entry);
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem<String>(
-          enabled: false,
-          child: Text('DEV — switch vehicle',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        ..._fleet.map((e) => PopupMenuItem<String>(
-              value: e['id'],
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.circle,
-                      size: 10,
-                      color: e['status'] == 'active'
-                          ? Colors.green
-                          : Colors.orange),
-                  const SizedBox(width: 8),
-                  Text(e['plate'] ?? ''),
-                  if (e['id'] == _activeId) ...[
-                    const SizedBox(width: 8),
-                    const Icon(Icons.check, size: 16),
-                  ],
-                ],
-              ),
-            )),
-      ],
-    );
+  Future<void> _maybePrimer() async {
+    if (_primerShown || state.locationPrimerShown) return;
+    _primerShown = true;
+    final granted = await showLocationPrimer(context);
+    if (!mounted) return;
+    state.completeLocationPrimer(granted: granted ?? false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    final activeId = _activeId;
-    if (activeId == null) {
-      // No vehicle linked: release builds stop here; dev builds still get the
-      // switcher in the app bar so a vehicle can be picked.
-      return Scaffold(
-        appBar: _devSwitcher && _fleet.isNotEmpty
-            ? AppBar(actions: [_devSwitcherButton()])
-            : null,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'No ambulance is assigned to ${widget.user.email}.\n'
-              'Ask the administrator to assign one.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-        ),
-      );
-    }
+    final tablet = isTabletLayout(context);
+    final screens = [
+      OpsScreen(state: state),
+      HistoryScreen(state: state),
+      AccountScreen(state: state),
+    ];
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_index]),
-        actions: [
-          if (_devSwitcher && _fleet.isNotEmpty) _devSwitcherButton(),
-        ],
-      ),
-      body: IndexedStack(
-        index: _index,
+      body: Row(
         children: [
-          OpsScreen(key: ValueKey(activeId), ambulanceId: activeId),
-          MissionScreen(key: ValueKey(activeId), ambulanceId: activeId),
-          AccountScreen(
-            key: ValueKey(activeId),
-            user: widget.user,
-            ambulanceId: activeId,
-            plate: _activePlate,
-            devOverride: _devSwitcher && _devOverrideId != _ambulanceId,
-          ),
+          if (tablet)
+            NavigationRail(
+              selectedIndex: _tab,
+              onDestinationSelected: (i) => setState(() => _tab = i),
+              labelType: NavigationRailLabelType.all,
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Icon(Icons.local_hospital_rounded,
+                    color: Theme.of(context).colorScheme.primary),
+              ),
+              destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map_rounded),
+                  label: Text('Ops'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.history_rounded),
+                  label: Text('History'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded),
+                  label: Text('Account'),
+                ),
+              ],
+            ),
+          Expanded(child: screens[_tab]),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Ops'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.local_hospital), label: 'Mission'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Account'),
-        ],
-      ),
+      bottomNavigationBar: tablet
+          ? null
+          : NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: (i) => setState(() => _tab = i),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map_rounded),
+                  label: 'Ops',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.history_rounded),
+                  label: 'History',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded),
+                  label: 'Account',
+                ),
+              ],
+            ),
     );
   }
 }
