@@ -50,6 +50,7 @@ abstract class CrewRepository extends ChangeNotifier {
   int get jobCountdown;
   bool get simulateMissionWriteError;
   bool get simulateDutyError;
+  bool get simulateLoginError;
 
   // ── Directory data ───────────────────────────────────────────────────
   List<Hospital> get hospitals;

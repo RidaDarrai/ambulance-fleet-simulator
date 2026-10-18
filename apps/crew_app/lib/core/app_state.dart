@@ -67,6 +67,9 @@ class AppState extends ChangeNotifier {
 
   Mission? get activeMission => _repo.activeMission;
   int get jobCountdown => _repo.jobCountdown;
+  bool get simulateMissionWriteError => _repo.simulateMissionWriteError;
+  bool get simulateDutyError => _repo.simulateDutyError;
+  bool get simulateLoginError => _repo.simulateLoginError;
 
   List<Hospital> get hospitals => _repo.hospitals;
   LatLng get unitPosition => _repo.unitPosition;
