@@ -42,6 +42,10 @@ dependencies:
   latlong2: ^0.10.1
   url_launcher: ^6.3.0
   http: ^1.2.0
+  # Design typography (Inter + JetBrains Mono). NOTE: google_fonts fetches
+  # font files at runtime by default — for a production offline-first build
+  # these should be bundled as assets (see crew wiring notes).
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
