@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'core/app_state.dart';
 import 'core/firebase_repository.dart';
@@ -21,6 +22,12 @@ const bool _kLive = bool.fromEnvironment('LIVE');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Offline-first typography: Inter + JetBrains Mono ship as bundled assets
+  // (pubspec `fonts:`), so google_fonts must never hit the network. If a
+  // weight were missing it would now fail loudly instead of downloading —
+  // the bundled set matches exactly what app_theme.dart requests.
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   // Firebase is OPTIONAL at boot. If init fails (offline, unsupported
   // platform, bad config) the app still runs in demo mode — the repository

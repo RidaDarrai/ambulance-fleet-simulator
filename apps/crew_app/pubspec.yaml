@@ -46,9 +46,10 @@ dependencies:
   geolocator: ^14.1.1 # GPS upload to RTDB positions/{id}
   connectivity_plus: ^7.3.1 # real `offline` state (demo setter is inert in LIVE)
   firebase_messaging: ^16.7.0 # crew job push (data messages)
-  # Design typography (Inter + JetBrains Mono). NOTE: google_fonts fetches
-  # font files at runtime by default — for a production offline-first build
-  # these should be bundled as assets (see crew wiring notes).
+  # Design typography (Inter + JetBrains Mono). Bundled as assets (fonts/
+  # assets/fonts) and runtime fetching is disabled in main.dart — the app
+  # must render its type offline-first; google_fonts finds these by the
+  # {Family}-{Variant}.ttf naming convention and skips the network entirely.
   google_fonts: ^6.2.1
 
 dev_dependencies:
@@ -72,6 +73,25 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Bundled design type (OFL-licensed upstream releases: rsms/inter v3.19,
+  # JetBrains/JetBrainsMono v2.304). Names follow google_fonts' expected
+  # {Family}-{Variant}.ttf convention so no runtime download ever happens.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
