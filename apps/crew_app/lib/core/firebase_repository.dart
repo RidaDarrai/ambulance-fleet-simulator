@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -27,11 +28,19 @@ import 'route_service.dart';
 ///  * Phase 4: GPS upload to RTDB `positions/{id}` + real `gpsLost`.
 ///  * **Phase 5:** hospitals directory + OSRM road geometry and
 ///    ETA (server `etaSeconds` preferred, km-based client fallback).
-///  * **Phase 6 (this file):** chat — Firestore `missions/{id}/messages`
+///  * **Phase 6:** chat — Firestore `missions/{id}/messages`
 ///    cached per mission so the seam's synchronous `messages(id)` keeps
 ///    working; the active mission's thread is subscribed eagerly (unread
 ///    badge), others on `openChat`.
-///  * Phase 7: duty (`ambulances/{id}.available`) + FCM token registration.
+///  * **Phase 7 (this file):** duty persisted as `ambulances/{id}.available`
+///    (restored on login, GPS resumes) + FCM token published to
+///    `ambulances/{id}.crewFcmToken` for the backend's `notifyCrew` fan-out.
+///
+/// Remaining (needs server-side work, not client code):
+///  * `onMissionUpdate` in functions/index.js only fans out to the *patient*
+///    — a one-line `notifyCrew(after.ambulanceId, missionId, to)` call is
+///    needed so dispatcher/manual assignments push to the crew too
+///    (the `requestAmbulance` callable already notifies).
 ///
 /// Contract notes from the backend (Phase 0 recon):
 ///  * `ambulances` doc ID == plate; `crewId` = Auth uid; `base:{lat,lng}`;
@@ -237,6 +246,15 @@ class FirebaseRepository extends CrewRepository {
         }
         final plate = amb?['plate'];
         if (plate is String && plate.isNotEmpty) ambulanceId = plate;
+        // Restore duty from the persisted field so an app restart doesn't
+        // silently take the unit out of dispatch (or strand it in).
+        if (amb?['available'] == false) {
+          onDuty = false;
+        } else if (amb?['available'] == true) {
+          onDuty = true;
+          _resumeDutyGps();
+        }
+        _registerFcmToken();
       }
       _identityResolved = true;
       if (id != null) {
@@ -274,6 +292,16 @@ class FirebaseRepository extends CrewRepository {
   @override
   void signOut() {
     if (!canSignOut) return; // blocked mid-mission (Account §13)
+    // Stop job pushes to this device; next sign-in re-publishes.
+    final id = _ambulanceDocId;
+    _fcmTokenSub?.cancel();
+    _fcmTokenSub = null;
+    if (id.isNotEmpty) {
+      _service.setCrewFcmToken(id, null).catchError((Object e) {
+        debugPrint('FCM token clear failed: $e');
+        return null;
+      });
+    }
     _service.signOut();
     // _onAuthChanged clears identity + stops the mission watch.
   }
@@ -895,15 +923,16 @@ class FirebaseRepository extends CrewRepository {
     notifyListeners();
   }
 
-  // ── Duty (§3/§4): local flip + GPS upload; `available` persistence
-  //    lands in Phase 7.
+  // ── Duty (Phase 7): persisted as `ambulances/{id}.available` — the
+  //    field dispatch's nearestUnit() already filters on.
 
-  /// Going on duty shares GPS with dispatch: RTDB `positions/{id}` at most
-  /// every ~10 m (rules permit crew writes — Phase 0 recon). Off duty the
-  /// upload stops so the unit isn't tracked on break.
+  /// Going on duty shares GPS with dispatch (Phase 4) and flips
+  /// `available` so `nearestUnit()` includes this unit in matching. Off
+  /// duty: upload stops, `available: false` takes the unit out of rotation.
   @override
   Future<void> setOnDuty(bool value) async {
     if (activeMission != null && !value) return; // blocked mid-mission (§13)
+    if (_ambulanceDocId.isEmpty) return; // unmapped — nothing to persist to
     dutySwitching = true;
     notifyListeners();
     try {
@@ -919,13 +948,14 @@ class FirebaseRepository extends CrewRepository {
       } else {
         _stopGpsSharing();
       }
+      await _service.setAvailable(_ambulanceDocId, value);
       onDuty = value;
-      // TODO(phase7): persist `ambulances/{id}.available` so dispatch's
-      // nearestUnit() can skip this unit while off duty.
     } catch (e) {
       debugPrint('duty toggle failed: $e');
       onDuty = false;
       _stopGpsSharing();
+      // Caller shows "Couldn't change duty status." (§4) and the switch
+      // snaps back because onDuty stayed false.
     } finally {
       dutySwitching = false;
       notifyListeners();
@@ -946,6 +976,50 @@ class FirebaseRepository extends CrewRepository {
       _startPositionAgeTicker();
     }
     return ok;
+  }
+
+  // ── FCM job push (Phase 7) ───────────────────────────────────────────
+
+  /// Publish this device's token where the backend's `notifyCrew()` looks
+  /// it up (`ambulances/{id}.crewFcmToken`), and keep it fresh on rotation.
+  /// Failures are non-fatal (no push, but the app works via the stream).
+  StreamSubscription<String>? _fcmTokenSub;
+
+  Future<void> _registerFcmToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      final token = await messaging.getToken();
+      if (token != null && _ambulanceDocId.isNotEmpty) {
+        await _service.setCrewFcmToken(_ambulanceDocId, token);
+      }
+      _fcmTokenSub ??= messaging.onTokenRefresh.listen((next) {
+        if (_ambulanceDocId.isNotEmpty) {
+          _service.setCrewFcmToken(_ambulanceDocId, next).catchError(
+            (Object e) {
+              debugPrint('FCM token refresh publish failed: $e');
+              return null;
+            },
+          );
+        }
+      });
+    } catch (e) {
+      // Web without VAPID config, or messaging unsupported — job pushes
+      // just don't arrive; the Firestore stream still drives the UI.
+      debugPrint('FCM token registration failed: $e');
+    }
+  }
+
+  /// Restart sharing after a resume/restore that found `available: true`.
+  Future<void> _resumeDutyGps() async {
+    _positionUploading = await _position.startUpload(
+      _ambulanceDocId,
+      onFix: _onPositionFix,
+      onError: _onGpsError,
+    );
+    locationPermissionDenied = !_positionUploading;
+    gpsLost = !_positionUploading;
+    _startPositionAgeTicker();
+    notifyListeners();
   }
 
   bool _positionUploading = false;
@@ -1121,6 +1195,7 @@ class FirebaseRepository extends CrewRepository {
 
   @override
   void dispose() {
+    _fcmTokenSub?.cancel();
     _position.stopUpload();
     _positionAgeTicker?.cancel();
     _missionsSub?.cancel();

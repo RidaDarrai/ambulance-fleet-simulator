@@ -242,6 +242,14 @@ exports.onMissionUpdate = onDocumentUpdated("missions/{missionId}", async (event
     incidentId: missionId,
     status: to,
   });
+
+  // FCM fan-out to the crew (ambulances/{id}.crewFcmToken — published by
+  // the crew app on sign-in). Sent on every transition that involves this
+  // unit — the UI is driven by the Firestore stream, but a pocketed phone
+  // needs a buzz (job offer, cancellation while en route, etc.).
+  if (after.ambulanceId) {
+    await notifyCrew(after.ambulanceId, missionId, to);
+  }
 });
 
 // Unit position (RTDB) → target (pickup, or hospital while transporting).

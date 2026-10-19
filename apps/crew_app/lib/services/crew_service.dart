@@ -53,6 +53,21 @@ class CrewService {
     return snap.data();
   }
 
+  /// Dispatch availability (crew-writable per rules): `nearestUnit()` in
+  /// functions + the auto-dispatch script both skip `available === false`.
+  Future<void> setAvailable(String ambulanceId, bool available) =>
+      _db.collection('ambulances').doc(ambulanceId).update({
+        'available': available,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+  /// Device token the backend's `notifyCrew()` fan-out sends job pushes to
+  /// (`ambulances/{id}.crewFcmToken` — see functions/index.js). Null clears.
+  Future<void> setCrewFcmToken(String ambulanceId, String? token) =>
+      _db.collection('ambulances').doc(ambulanceId).update({
+        'crewFcmToken': token,
+      });
+
   /// All ambulances ordered by plate — used by the dev switcher.
   Stream<List<Map<String, String>>> watchAllAmbulances() => _db
       .collection('ambulances')

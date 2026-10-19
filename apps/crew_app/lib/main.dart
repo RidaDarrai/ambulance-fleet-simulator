@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
@@ -28,11 +29,20 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
+    // Data-only job pushes: the isolate handler is required for Android
+    // background delivery; the foreground UI is driven by the Firestore
+    // mission stream (push is a wake-up nudge, not the data channel).
+    FirebaseMessaging.onBackgroundMessage(_fcmBackgroundHandler);
   } catch (e) {
     debugPrint('Firebase unavailable — staying in demo mode: $e');
   }
 
   runApp(const CrewApp());
+}
+
+@pragma('vm:entry-point')
+Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
+  debugPrint('FCM background message: ${message.messageId}');
 }
 
 /// Adaptive breakpoint (IA §0.5): mounted landscape tablets get the rail +
