@@ -11,6 +11,7 @@ import '../services/position_service.dart';
 import 'crew_repository.dart';
 import 'mission_status.dart';
 import 'models.dart';
+import 'route_service.dart';
 
 /// Real backend behind the [CrewRepository] seam — Firestore / Auth / RTDB,
 /// the crew counterpart to patient_app's `FirebaseRepository`.
@@ -20,12 +21,12 @@ import 'models.dart';
 /// partial:
 ///
 ///  * Phase 2: identity (FirebaseAuth + ambulance mapping), real `offline`.
-///  * **Phase 3 (this file):** mission stream (`missions where ambulanceId
-///    == mine`), accept/reject/advance/setHospital, incoming-job countdown,
-///    history derived from the same stream (no composite index needed —
-///    single equality filter, resolved/cancelled rows filtered client-side).
-///  * Phase 4: GPS upload to RTDB `positions/{id}` + `gpsLost`.
-///  * Phase 5: hospitals directory + OSRM route ETA.
+///  * Phase 3: mission stream, accept/reject/advance/setHospital, countdown,
+///    history derived from the same stream (single equality filter, no
+///    composite index needed — resolved/cancelled rows filtered client-side).
+///  * Phase 4: GPS upload to RTDB `positions/{id}` + real `gpsLost`.
+///  * **Phase 5 (this file):** hospitals directory + OSRM road geometry and
+///    ETA (server `etaSeconds` preferred, km-based client fallback).
 ///  * Phase 6: chat message cache (Firestore `missions/{id}/messages`).
 ///  * Phase 7: duty (`ambulances/{id}.available`) + FCM token registration.
 ///
@@ -123,9 +124,17 @@ class FirebaseRepository extends CrewRepository {
   /// guests, cached as an empty profile to avoid refetch loops).
   final Map<String, PatientProfile> _profiles = {};
 
-  /// Fresh-server ETA base for the 1 Hz ageing ticker (routed legs only).
+  /// Eta ageing base: seconds + the instant they were recorded. Recorded
+  /// from the server's OSRM `etaSeconds` (routed legs) or the client's
+  /// km-based fallback when the server hasn't written one yet. Re-based
+  /// whenever the doc's `updatedAt` changes (new leg) or the base changes.
   int? _serverEtaBase;
   DateTime? _serverEtaAt;
+  DateTime? _serverEtaStamp; // `updatedAt` the base was derived from
+
+  /// OSRM geometry fetch guard: one fetch per mission + leg.
+  String? _routeMissionId;
+  MissionStatus? _routeLeg;
 
   /// Ids with a queued offline advance (chip stays "pending" until the
   /// connection returns and the write syncs — §14).
@@ -221,7 +230,10 @@ class FirebaseRepository extends CrewRepository {
         if (plate is String && plate.isNotEmpty) ambulanceId = plate;
       }
       _identityResolved = true;
-      if (id != null) _startMissionsWatch();
+      if (id != null) {
+        _startMissionsWatch();
+        _loadHospitals(); // fire-and-forget: names/locs enrich later snapshots
+      }
     } catch (e) {
       debugPrint('Crew identity lookup failed: $e');
       fleetError = true;
@@ -345,6 +357,7 @@ class FirebaseRepository extends CrewRepository {
       _countdownTimer = null;
       _serverEtaBase = null;
       _serverEtaAt = null;
+      _serverEtaStamp = null;
     }
     activeMission = active;
     if (active == null) {
@@ -354,6 +367,8 @@ class FirebaseRepository extends CrewRepository {
       jobCountdown = 0;
       _etaTicker?.cancel();
       _etaTicker = null;
+      _routeMissionId = null;
+      _routeLeg = null;
     } else {
       _activeDoc = _docOf(snap, active.id);
       _activeDocId = active.id;
@@ -367,6 +382,7 @@ class FirebaseRepository extends CrewRepository {
       }
       _startEtaTicker();
       _maybeLoadProfile(active);
+      _maybeFetchLegRoute(active); // OSRM geometry for the active leg
     }
     notifyListeners();
   }
@@ -411,11 +427,16 @@ class FirebaseRepository extends CrewRepository {
     }
 
     // Server OSRM ETA (routed legs) — adopt it and age it from `updatedAt`.
+    // The stamp guards against re-basing on every snapshot (which would
+    // freeze the countdown at `base` forever).
     final serverEta = data['etaSeconds'];
+    final updatedAt = _ts(data['updatedAt']);
     if (serverEta is num && serverEta > 0) {
-      if (_serverEtaBase != serverEta.toInt()) {
+      if (_serverEtaBase != serverEta.toInt() ||
+          _serverEtaStamp != updatedAt) {
         _serverEtaBase = serverEta.toInt();
-        _serverEtaAt = _ts(data['updatedAt']) ?? DateTime.now();
+        _serverEtaAt = updatedAt ?? DateTime.now();
+        _serverEtaStamp = updatedAt;
       }
     }
 
@@ -603,6 +624,82 @@ class FirebaseRepository extends CrewRepository {
     final fresh = _missionFrom(id, doc, status);
     if (fresh == null) return;
     activeMission = fresh;
+    notifyListeners();
+  }
+
+  // ── Directory + OSRM geometry (Phase 5) ──────────────────────────────
+
+  /// Hospital directory (`hospitals` is world-readable per rules). Loaded
+  /// once after sign-in; the next mission snapshot picks the names up.
+  Future<void> _loadHospitals() async {
+    try {
+      final raw = await _service.hospitals();
+      final list = <Hospital>[];
+      for (final h in raw) {
+        final id = h['id'];
+        if (id == null) continue;
+        final loc = await _service.hospitalLocation(id);
+        if (loc == null || loc['lat'] is! num || loc['lng'] is! num) continue;
+        list.add(Hospital(
+          id: id,
+          name: h['name'] ?? id,
+          location: LatLng(
+            (loc['lat'] as num).toDouble(),
+            (loc['lng'] as num).toDouble(),
+          ),
+        ));
+      }
+      hospitals = list;
+      // Enrich the live mission + history rows with names/locations now
+      // that the directory landed.
+      _rebuildActiveProfile();
+    } catch (e) {
+      debugPrint('Hospital directory load failed: $e'); // sheets stay empty
+    }
+  }
+
+  /// OSRM road geometry for the leg the unit is currently driving (pickup
+  /// leg pre-accept, hospital leg while transporting). One fetch per
+  /// mission+leg; any failure falls back to the straight line the mission
+  /// already carries (design rule: geometry never blocks the deck).
+  Future<void> _maybeFetchLegRoute(Mission m) async {
+    if (offline) return;
+    final leg = switch (m.status) {
+      MissionStatus.assigned ||
+      MissionStatus.accepted ||
+      MissionStatus.enRoute =>
+        MissionStatus.enRoute, // pickup leg
+      MissionStatus.transporting => MissionStatus.transporting,
+      _ => null,
+    };
+    if (leg == null) return;
+    if (_routeMissionId == m.id && _routeLeg == leg) return; // already tried
+    _routeMissionId = m.id;
+    _routeLeg = leg;
+
+    final from = unitPosition;
+    final to = leg == MissionStatus.transporting
+        ? (_hospitalLocation(m.hospitalId) ?? m.pickup)
+        : m.pickup;
+    final route = await RouteService.drivingRoute(from, to);
+    if (route == null) return; // straight-line fallback stays
+    final live = activeMission;
+    if (live == null || live.id != m.id || live.status != m.status) return;
+    if (leg == MissionStatus.transporting) {
+      live.routeToHospital = route;
+    } else {
+      live.routeToPickup = route;
+    }
+    final km = RouteService.totalKm(route);
+    live.distanceKm = double.parse(km.toStringAsFixed(1));
+    // Road ETA only when the server hasn't already written its own number.
+    if (_serverEtaBase == null) {
+      live.etaSeconds = (km * 150).round(); // ~24 km/h Casablanca traffic
+      live.legTotalSeconds = live.etaSeconds;
+      _serverEtaBase = live.etaSeconds;
+      _serverEtaAt = DateTime.now();
+      _serverEtaStamp = null;
+    }
     notifyListeners();
   }
 
