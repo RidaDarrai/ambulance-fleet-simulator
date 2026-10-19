@@ -275,7 +275,7 @@ class AccountScreen extends StatelessWidget {
               gapH(24),
 
               // ── Demo panel (state review) ────────────────────────────
-              _DemoPanel(state: state),
+              if (state.isDemo) _DemoPanel(state: state),
               gapH(24),
             ],
           ),

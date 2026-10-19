@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
+import 'core/firebase_repository.dart';
 import 'core/mission_status.dart';
 import 'firebase_options.dart';
 import 'screens/account_screen.dart';
@@ -11,11 +12,11 @@ import 'screens/ops_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/permission_primer.dart';
 
-/// Note: when the crew-side `FirebaseRepository` is built (mirroring
-/// patient_app), gate it behind a `--dart-define=LIVE=true` flag plus a
-/// `Firebase.apps.isNotEmpty` check and pass it to `AppState(repository: …)`.
-/// Until then the app boots on the in-memory demo repository, so UI
-/// walkthroughs need no backend.
+/// `--dart-define=LIVE=true` swaps the in-memory demo repository for
+/// [FirebaseRepository] (real Auth/Firestore/RTDB), mirroring patient_app's
+/// seam. Without the flag — or if Firebase failed to initialize — the app
+/// stays on the demo repository, so UI walkthroughs need no backend.
+const bool _kLive = bool.fromEnvironment('LIVE');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,9 +51,12 @@ class CrewApp extends StatefulWidget {
 }
 
 class _CrewAppState extends State<CrewApp> {
-  // Demo repository by default; `repository:` param is the seam for the
-  // future FirebaseRepository (gated behind LIVE + Firebase.apps check).
-  final _state = AppState();
+  // Demo repository by default; LIVE builds get the real backend when
+  // Firebase actually initialized (failed init silently falls back).
+  late final _state = AppState(
+      repository: (_kLive && Firebase.apps.isNotEmpty)
+          ? FirebaseRepository()
+          : null);
 
   @override
   void dispose() {
