@@ -43,6 +43,15 @@ abstract class CrewRepository extends ChangeNotifier {
   bool get offline;
   bool get gpsLost;
 
+  /// Real OS location permission (LIVE) — drives the denied banner + the
+  /// Account location row. Demo's denied state lives in AppState's primer
+  /// pref, so the demo repository always reports false here.
+  bool get locationPermissionDenied;
+
+  /// Check (and optionally prompt for) OS location permission.
+  /// [prompt] false = silent re-check (banner/settings return paths).
+  Future<bool> ensureLocationPermission({bool prompt = true});
+
   // ── Missions (§5/§6) ─────────────────────────────────────────────────
   Mission? get activeMission;
 

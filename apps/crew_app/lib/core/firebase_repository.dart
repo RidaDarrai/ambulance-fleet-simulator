@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../services/crew_service.dart';
+import '../services/position_service.dart';
 import 'crew_repository.dart';
 import 'mission_status.dart';
 import 'models.dart';
@@ -87,13 +88,19 @@ class FirebaseRepository extends CrewRepository {
   @override
   bool offline = false;
   @override
-  bool gpsLost = false; // driven by the GPS stream (Phase 4)
+  bool gpsLost = false;
+  @override
+  bool locationPermissionDenied = false;
 
-  // ── Duty (§3/§4) — persisted in Phase 7 ──────────────────────────────
+  // ── Duty (§3/§4): local flip + GPS upload; `available` persistence
+  //    lands in Phase 7.
   @override
   bool onDuty = false;
   @override
   bool dutySwitching = false;
+
+  final PositionService _position = PositionService();
+  Timer? _positionAgeTicker; // staleness watchdog while uploading
 
   // ── Missions (§5/§6) — streamed (Phase 3) ────────────────────────────
   @override
@@ -172,6 +179,8 @@ class FirebaseRepository extends CrewRepository {
       _identityResolved = false;
       fleetLoading = false;
       vehicleUnmapped = false;
+      onDuty = false;
+      _stopGpsSharing();
       _stopMissionsWatch();
       notifyListeners();
       return;
@@ -778,17 +787,109 @@ class FirebaseRepository extends CrewRepository {
     notifyListeners();
   }
 
-  // ── Duty — full persistence lands in Phase 7 ─────────────────────────
+  // ── Duty (§3/§4): local flip + GPS upload; `available` persistence
+  //    lands in Phase 7.
 
+  /// Going on duty shares GPS with dispatch: RTDB `positions/{id}` at most
+  /// every ~10 m (rules permit crew writes — Phase 0 recon). Off duty the
+  /// upload stops so the unit isn't tracked on break.
   @override
   Future<void> setOnDuty(bool value) async {
-    // Not yet persisted: keep the toggle visually honest (spinner) without
-    // claiming a durable state the backend doesn't record yet.
+    if (activeMission != null && !value) return; // blocked mid-mission (§13)
     dutySwitching = true;
     notifyListeners();
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    dutySwitching = false;
+    try {
+      if (value) {
+        _positionUploading = await _position.startUpload(
+          _ambulanceDocId,
+          onFix: _onPositionFix,
+          onError: _onGpsError,
+        );
+        locationPermissionDenied = !_positionUploading;
+        gpsLost = !_positionUploading;
+        _startPositionAgeTicker();
+      } else {
+        _stopGpsSharing();
+      }
+      onDuty = value;
+      // TODO(phase7): persist `ambulances/{id}.available` so dispatch's
+      // nearestUnit() can skip this unit while off duty.
+    } catch (e) {
+      debugPrint('duty toggle failed: $e');
+      onDuty = false;
+      _stopGpsSharing();
+    } finally {
+      dutySwitching = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  Future<bool> ensureLocationPermission({bool prompt = true}) async {
+    final ok = await PositionService.ensurePermission(prompt: prompt);
+    locationPermissionDenied = !ok;
+    if (ok && onDuty && !_positionUploading) {
+      // Permission came back (e.g. after Settings) while still on duty.
+      _positionUploading = await _position.startUpload(
+        _ambulanceDocId,
+        onFix: _onPositionFix,
+        onError: _onGpsError,
+      );
+      _startPositionAgeTicker();
+    }
+    return ok;
+  }
+
+  bool _positionUploading = false;
+
+  void _onPositionFix(LatLng point) {
+    unitPosition = point;
+    positionAgeSeconds = 0;
+    _positionUploading = true;
+    if (gpsLost) gpsLost = false;
+    // Live unit marker feeds honest distances for the active leg.
+    final m = activeMission;
+    if (m != null) {
+      final target = (m.status == MissionStatus.transporting ||
+              m.status == MissionStatus.atHospital)
+          ? (_hospitalLocation(m.hospitalId) ?? m.pickup)
+          : m.pickup;
+      m.distanceKm = _straightKm(point, target);
+    }
     notifyListeners();
+  }
+
+  void _onGpsError() {
+    gpsLost = true;
+    _positionUploading = false;
+    notifyListeners();
+  }
+
+  /// Staleness watchdog: no fix for >30 s while on duty → gpsLost (the
+  /// design's §14 "GPS lost" strip); recovers on the next fix.
+  void _startPositionAgeTicker() {
+    _positionAgeTicker?.cancel();
+    _positionAgeTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!onDuty) {
+        _positionAgeTicker?.cancel();
+        _positionAgeTicker = null;
+        return;
+      }
+      positionAgeSeconds++;
+      if (positionAgeSeconds > 30 && !gpsLost) {
+        gpsLost = true;
+      }
+      notifyListeners();
+    });
+  }
+
+  void _stopGpsSharing() {
+    _position.stopUpload();
+    _positionUploading = false;
+    _positionAgeTicker?.cancel();
+    _positionAgeTicker = null;
+    gpsLost = false;
+    positionAgeSeconds = 0;
   }
 
   // ── Chat — Firestore-backed in Phase 6 ───────────────────────────────
@@ -843,6 +944,8 @@ class FirebaseRepository extends CrewRepository {
 
   @override
   void dispose() {
+    _position.stopUpload();
+    _positionAgeTicker?.cancel();
     _missionsSub?.cancel();
     _countdownTimer?.cancel();
     _etaTicker?.cancel();

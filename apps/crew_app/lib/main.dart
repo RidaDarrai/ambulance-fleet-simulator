@@ -116,6 +116,11 @@ class _RootGateState extends State<RootGate> {
     final granted = await showLocationPrimer(context);
     if (!mounted) return;
     state.completeLocationPrimer(granted: granted ?? false);
+    if (granted == true) {
+      // Primer explained *why*; now show the OS/browser prompt (LIVE) —
+      // the demo repository answers true instantly, so demo flow is intact.
+      await state.ensureLocationPermission();
+    }
   }
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'crew_repository.dart';
@@ -123,17 +124,43 @@ class AppState extends ChangeNotifier {
 
   // ── Pre-permission primers (screen spec §2) ─────────────────────────
   bool locationPrimerShown = false;
-  bool locationGranted = true; // demo default; denied strip is togglable
+  bool _locationPrefGranted = true; // demo default; denied strip is togglable
+
+  /// Effective grant: the UI pref AND the real OS permission (LIVE). The
+  /// demo repository always reports the OS side as granted, so demo
+  /// walkthroughs are driven purely by the pref.
+  bool get locationGranted =>
+      _locationPrefGranted && !_repo.locationPermissionDenied;
 
   void completeLocationPrimer({required bool granted}) {
     locationPrimerShown = true;
-    locationGranted = granted;
+    _locationPrefGranted = granted;
     notifyListeners();
   }
 
   void setLocationGranted(bool value) {
-    locationGranted = value;
+    _locationPrefGranted = value;
     notifyListeners();
+  }
+
+  /// Re-check (and maybe prompt for) the OS location permission; used by the
+  /// denied banner's "Open Settings" return path and after the primer.
+  Future<bool> ensureLocationPermission({bool prompt = true}) async {
+    final ok = await _repo.ensureLocationPermission(prompt: prompt);
+    notifyListeners();
+    return ok;
+  }
+
+  /// Denied banner action: jump to the OS app-settings page (LIVE) so the
+  /// user can flip the permission, then silently re-check on return. The
+  /// demo repository has no OS permission — the pref just re-grants.
+  Future<void> openLocationSettings() async {
+    if (isDemo) {
+      setLocationGranted(true);
+      return;
+    }
+    await Geolocator.openAppSettings();
+    await ensureLocationPermission(prompt: false);
   }
 
   void setReduceMotion(bool value) {

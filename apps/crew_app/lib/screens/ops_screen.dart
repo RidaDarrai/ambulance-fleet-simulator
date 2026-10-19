@@ -464,8 +464,7 @@ class _UnitPanelBody extends StatelessWidget {
           gapH(8),
         ],
         if (!state.locationGranted) ...[
-          LocationDeniedBanner(
-              onOpenSettings: () => state.setLocationGranted(true)),
+          LocationDeniedBanner(onOpenSettings: state.openLocationSettings),
           gapH(8),
         ],
         // Duty row: chip + switch (first-class, IA §1).

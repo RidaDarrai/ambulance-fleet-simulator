@@ -51,6 +51,11 @@ class DemoRepository extends CrewRepository {
   bool offline = false;
   @override
   bool gpsLost = false;
+  @override
+  bool get locationPermissionDenied => false; // demo denial lives in AppState
+
+  @override
+  Future<bool> ensureLocationPermission({bool prompt = true}) async => true;
 
   // ── History states (§11) ─────────────────────────────────────────────
   @override
