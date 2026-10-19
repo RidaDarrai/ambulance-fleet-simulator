@@ -25,9 +25,12 @@ import 'route_service.dart';
 ///    history derived from the same stream (single equality filter, no
 ///    composite index needed — resolved/cancelled rows filtered client-side).
 ///  * Phase 4: GPS upload to RTDB `positions/{id}` + real `gpsLost`.
-///  * **Phase 5 (this file):** hospitals directory + OSRM road geometry and
+///  * **Phase 5:** hospitals directory + OSRM road geometry and
 ///    ETA (server `etaSeconds` preferred, km-based client fallback).
-///  * Phase 6: chat message cache (Firestore `missions/{id}/messages`).
+///  * **Phase 6 (this file):** chat — Firestore `missions/{id}/messages`
+///    cached per mission so the seam's synchronous `messages(id)` keeps
+///    working; the active mission's thread is subscribed eagerly (unread
+///    badge), others on `openChat`.
 ///  * Phase 7: duty (`ambulances/{id}.available`) + FCM token registration.
 ///
 /// Contract notes from the backend (Phase 0 recon):
@@ -162,6 +165,12 @@ class FirebaseRepository extends CrewRepository {
   bool historyLoading = false;
   @override
   bool historyError = false;
+
+  // ── Chat (Phase 6): Firestore threads cached for the sync seam ───────
+  final Map<String, List<ChatMessage>> _chats = {};
+  final Map<String, StreamSubscription<List<Map<String, dynamic>>>>
+      _chatSubs = {};
+  final Map<String, DateTime> _chatOpenedAt = {};
 
   FirebaseRepository() {
     _authSub = _service.authChanges.listen(_onAuthChanged);
@@ -309,6 +318,7 @@ class FirebaseRepository extends CrewRepository {
     _historyRows.clear();
     _leftoverRows.clear();
     _pendingAdvance.clear();
+    _stopChatWatch();
     jobCountdown = 0;
     historyLoading = false;
     historyError = false;
@@ -383,6 +393,7 @@ class FirebaseRepository extends CrewRepository {
       _startEtaTicker();
       _maybeLoadProfile(active);
       _maybeFetchLegRoute(active); // OSRM geometry for the active leg
+      _watchActiveChat(); // unread badge is live before chat is opened
     }
     notifyListeners();
   }
@@ -989,23 +1000,92 @@ class FirebaseRepository extends CrewRepository {
     positionAgeSeconds = 0;
   }
 
-  // ── Chat — Firestore-backed in Phase 6 ───────────────────────────────
+  // ── Chat (Phase 6) ───────────────────────────────────────────────────
 
   @override
   Mission? mission(String id) =>
       activeMission?.id == id ? activeMission : null;
 
   @override
-  List<ChatMessage> messages(String missionId) => const [];
+  List<ChatMessage> messages(String missionId) => _chats[missionId] ?? const [];
+
+  /// Unread badge: non-crew messages newer than the last time chat was open
+  /// (same rule as the demo).
+  @override
+  int unreadCount(String missionId) {
+    final openedAt = _chatOpenedAt[missionId];
+    return (_chats[missionId] ?? const [])
+        .where((m) =>
+            m.senderRole != 'crew' &&
+            (openedAt == null || m.at.isAfter(openedAt)))
+        .length;
+  }
 
   @override
-  int unreadCount(String missionId) => 0;
+  void openChat(String missionId) {
+    _chatOpenedAt[missionId] = DateTime.now();
+    _watchChat(missionId);
+    notifyListeners();
+  }
+
+  /// Subscribe to a mission's `messages` subcollection (rules: readable by
+  /// whoever can read the parent mission — crew qualifies). The stream is
+  /// newest-first from CrewService; the UI expects oldest-first, so flip it.
+  void _watchChat(String missionId) {
+    if (_chatSubs.containsKey(missionId)) return;
+    _chatSubs[missionId] =
+        _service.watchMessages(missionId).listen((rows) {
+      final list = rows.reversed
+          .map((r) => ChatMessage(
+                text: (r['text'] as String?) ?? '',
+                senderRole: (r['senderRole'] as String?) ?? '',
+                at: r['at'] as DateTime? ?? DateTime.now(),
+              ))
+          .toList();
+      _chats[missionId] = list;
+      notifyListeners();
+    }, onError: (Object e) {
+      debugPrint('Chat stream error ($missionId): $e');
+      _chatSubs.remove(missionId)?.cancel();
+    });
+  }
 
   @override
-  void openChat(String missionId) {}
+  void sendMessage(String missionId, String text, {bool quick = false}) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    // Optimistic bubble (pending while offline — Firestore queues the write
+    // and the stream snapshot replaces it with the server copy on sync).
+    final list = _chats.putIfAbsent(missionId, () => []);
+    list.add(ChatMessage(
+      text: trimmed,
+      senderRole: 'crew',
+      at: DateTime.now(),
+      pending: offline,
+    ));
+    _watchChat(missionId);
+    notifyListeners();
+    _service.sendMessage(missionId, trimmed).catchError((Object e) {
+      debugPrint('sendMessage failed: $e');
+      return null;
+    });
+  }
 
-  @override
-  void sendMessage(String missionId, String text, {bool quick = false}) {}
+  /// Eagerly subscribe to the active mission's thread so the unread badge
+  /// is live before the crew ever opens the chat.
+  void _watchActiveChat() {
+    final id = _activeDocId;
+    if (id != null) _watchChat(id);
+  }
+
+  void _stopChatWatch() {
+    for (final sub in _chatSubs.values) {
+      sub.cancel();
+    }
+    _chatSubs.clear();
+    _chats.clear();
+    _chatOpenedAt.clear();
+  }
 
   // ── Demo-state setters — inert here (real signals drive these) ───────
 
@@ -1048,6 +1128,7 @@ class FirebaseRepository extends CrewRepository {
     _etaTicker?.cancel();
     _authSub?.cancel();
     _connSub?.cancel();
+    _stopChatWatch();
     super.dispose();
   }
 }
